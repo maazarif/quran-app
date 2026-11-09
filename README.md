@@ -11,7 +11,7 @@ The app is a plain folder of files. Any static host works; it must be served ove
 2. Go to https://app.netlify.com/drop and drag the `quran-app` folder onto the page.
 3. Netlify gives you a link such as `https://your-name.netlify.app`. Create a free account to keep it.
 
-**GitHub Pages**
+**GitHub Pages** (this repository publishes automatically: every push to `main` runs the tests and updates the `gh-pages` branch)
 1. Create a new public repository and upload the contents of the folder (index.html at the top level).
 2. Settings → Pages → Deploy from branch → `main` / root → Save.
 3. The app appears at `https://<username>.github.io/<repository>/`.

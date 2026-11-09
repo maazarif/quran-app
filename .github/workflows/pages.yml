@@ -1,13 +1,12 @@
-# Publishes the app to GitHub Pages on every push to main.
-name: Publish to GitHub Pages
+# On every push to main: run the tests, then publish the app files to the gh-pages branch,
+# which GitHub Pages serves at https://maazarif.github.io/quran-app/
+name: Test and publish
 on:
   push:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 concurrency:
   group: pages
   cancel-in-progress: true
@@ -22,19 +21,22 @@ jobs:
       - run: npm install
       - run: npx playwright install --with-deps chromium
       - run: npm test
-  deploy:
+  publish:
     needs: test
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Collect site files
         run: |
           mkdir _site
           cp -r index.html styles.css app.js sw.js manifest.webmanifest icons _site/
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          touch _site/.nojekyll
+      - name: Publish to gh-pages
+        run: |
+          cd _site
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Publish ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
