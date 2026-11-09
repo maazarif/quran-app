@@ -61,12 +61,15 @@ const CORS = { "access-control-allow-origin": "*" };
 const js = body => ({ status: 200, headers: {"content-type":"application/javascript", ...CORS}, body });
 const data = (obj, esm) => esm ? js("export default " + JSON.stringify(obj)) : { status: 200, headers: {"content-type":"application/json", ...CORS}, body: JSON.stringify(obj) };
 
-/** opts: { iife: "ok"|"404"|"noglobal", iifeFile, esm: "ok"|"404", text: "ok"|"404", index: "ok"|"404", audio: "ok"|"404", sw: false|true, userAgent } */
+/** opts: { tap: "menu"|"highlight" (what tapping an ayah does at first launch), iife: "ok"|"404"|"noglobal", iifeFile, esm: "ok"|"404", text: "ok"|"404", index: "ok"|"404", audio: "ok"|"404", sw: false|true, userAgent } */
 export async function launch(opts = {}, viewport = {width: 1100, height: 900}) {
   const o = { iife:"ok", esm:"ok", esmShape:"needsLists", hafsPath:"404", text:"ok", index:"ok", audio:"404", sw:false, ...opts };
   const browser = await chromium.launch({ executablePath: existsSync("/usr/bin/google-chrome") ? "/usr/bin/google-chrome" : undefined,
     args: ["--autoplay-policy=no-user-gesture-required"] });
   const context = await browser.newContext({ viewport, serviceWorkers: o.sw ? "allow" : "block", ...(o.userAgent ? {userAgent:o.userAgent} : {}) });
+  // the app opens the menu on tap only when set to; older tests were written for that behaviour
+  const tap = o.tap || "menu";
+  await context.addInitScript(t => { try { if (t !== "default" && localStorage.getItem("mushaf:tap-set") === null) { localStorage.setItem("mushaf:tapAction", JSON.stringify(t)); localStorage.setItem("mushaf:tap-set", "1"); } } catch {} }, tap);
   const page = await context.newPage();
   const log = { requests: [], errors: [] };
   page.on("pageerror", e => log.errors.push(String(e)));

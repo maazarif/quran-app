@@ -188,13 +188,13 @@ test("Urdu translation is loaded from its own file and shown right-to-left", () 
 test("each Mushaf script style changes the Quran font and is remembered", () => withPage({}, async ({ page }) => {
   await page.waitForSelector(READY, { timeout: 15000 });
   await page.click("#openSettings");
-  const styles = await page.locator(".seg button").count();
+  const styles = await page.locator("#scriptSeg button").count();
   assert.equal(styles, 5, "four Madani styles plus IndoPak");
   for (const [label, font] of [["Quranic Naskh","Scheherazade New"],["Classic Naskh","Amiri"],["Modern Naskh","Noto Naskh Arabic"],["Madani Mushaf","Amiri Quran"]]) {
-    await page.locator(".seg button", { hasText: label }).click();
+    await page.locator("#scriptSeg button", { hasText: label }).click();
     assert.equal(await firstFont(page), font, label);
   }
-  await page.locator(".seg button", { hasText: "Classic Naskh" }).click();
+  await page.locator("#scriptSeg button", { hasText: "Classic Naskh" }).click();
   await page.reload(); await page.waitForSelector(READY);
   assert.equal(await firstFont(page), "Amiri");
 }));
@@ -384,7 +384,7 @@ test("Highlight mode: change colour, recolour an ayah, use the eraser; colours a
   assert.equal(await page.locator('.ayah[data-k="1:6"]').getAttribute("data-hl"), "green");
   assert.equal(await page.locator('.ayah[data-k="1:2"]').getAttribute("data-hl"), null);
   await page.click("#hlBtn");
-  assert.equal(await page.locator('#hlColors .swatch.none').getAttribute("aria-pressed"), "true", "chosen tool remembered");
+  assert.equal(await page.locator('#hlColors .swatch.green').getAttribute("aria-pressed"), "true", "last colour remembered; the eraser is not");
 }));
 
 test("Highlight mode: press and hold opens the full menu; Done brings back normal taps", () => withPage({}, async ({ page }) => {
@@ -424,6 +424,121 @@ test("Highlight mode: the colour bar doesn't cover the last line of the page on 
   const r = await page.evaluate(() => ({ folio: document.querySelector(".folio").getBoundingClientRect().bottom, bar: document.getElementById("hlbar").getBoundingClientRect().top }));
   assert.ok(r.folio <= r.bar, "page bottom " + r.folio + " is under the bar at " + r.bar);
 }, { width: 390, height: 844 }));
+
+/* ---------- reading mode (tap highlights) and settings ---------- */
+const openSettingsPick = async (page, seg, v) => { await page.click("#openSettings"); await page.locator("#" + seg + ' button[data-v="' + v + '"]').click(); await page.keyboard.press("Escape"); };
+
+test("Reading mode is the default: tapping highlights with no popup, and holding opens the menu", () => withPage({ tap: "default" }, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click('.ayah[data-k="1:2"]');
+  await page.waitForSelector('.ayah[data-k="1:2"][data-hl="amber"]');
+  assert.equal(await page.locator("#sheet").isVisible(), false);
+  assert.equal(await page.locator("#hlbar").isVisible(), false, "no colour bar needed");
+  assert.match(await page.locator("#toast").textContent(), /hold an ayah/i);
+  const box = await page.locator('.ayah[data-k="1:4"] .end').boundingBox();   // the ayah's number marker
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(650); await page.mouse.up();
+  await page.waitForSelector("#sheet:not([hidden])");
+  assert.match(await page.locator("#sheet h3").textContent(), /1:4/);
+}));
+
+test("Settings: 'Tapping an ayah' switches between highlighting and the menu, and is remembered", () => withPage({ tap: "default" }, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#openSettings");
+  assert.equal(await page.locator('#tapSeg button[data-v="highlight"]').getAttribute("aria-pressed"), "true");
+  await page.locator('#tapSeg button[data-v="menu"]').click();
+  await page.keyboard.press("Escape");
+  await page.click('.ayah[data-k="1:3"]');
+  await page.waitForSelector("#sheet:not([hidden])");
+  assert.equal(await page.locator('.ayah[data-k="1:3"]').getAttribute("data-hl"), null);
+  await page.keyboard.press("Escape");
+  await page.reload(); await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click('.ayah[data-k="1:3"]');
+  await page.waitForSelector("#sheet:not([hidden])");
+  await page.keyboard.press("Escape");
+  await openSettingsPick(page, "tapSeg", "highlight");
+  await page.click('.ayah[data-k="1:3"]');
+  await page.waitForSelector('.ayah[data-k="1:3"][data-hl]');
+}));
+
+test("Settings: the highlight colour chosen there is used for taps", () => withPage({ tap: "highlight" }, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#openSettings");
+  await page.locator('#hlColorSet .swatch.blue').click();
+  assert.equal(await page.locator('#hlColorSet .swatch.blue').getAttribute("aria-pressed"), "true");
+  await page.keyboard.press("Escape");
+  await page.click('.ayah[data-k="1:6"]');
+  await page.waitForSelector('.ayah[data-k="1:6"][data-hl="blue"]');
+}));
+
+/* ---------- side by side layout ---------- */
+const rowsOn = page => page.$$eval(".vrow", rs => rs.map(r => { const t = r.querySelector(".vtr").getBoundingClientRect(), a = r.querySelector(".var").getBoundingClientRect();
+  return { k: r.dataset.k, trLeft: t.left, arLeft: a.left, ar: r.querySelector(".var").textContent, tr: [...r.querySelectorAll(".vtr p:not(.tl)")].map(p => p.textContent).join() }; }));
+
+test("Side by side: every ayah of the page on its own row, translation on the left, exact Arabic on the right", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#p2");
+  await page.waitForSelector('.ayah[data-k="2:1"]', { timeout: 15000 });
+  const keys = await page.$$eval(".ayah", e => e.map(x => x.dataset.k));
+  await openSettingsPick(page, "layoutSeg", "side");
+  await page.waitForSelector(".frame.rows .vrow");
+  const rows = await rowsOn(page);
+  assert.deepEqual(rows.map(r => r.k), keys, "same ayat as the Mushaf page");
+  for (const r of rows) {
+    const [s, a] = r.k.split(":").map(Number);
+    assert.ok(r.trLeft < r.arLeft, "translation is left of the Arabic for " + r.k);
+    assert.equal(r.ar, arText(s, a) + " ﴿" + String(a).replace(/\d/g, d => "٠١٢٣٤٥٦٧٨٩"[d]) + "﴾");
+    assert.equal(r.tr, "EN " + r.k);
+  }
+  assert.equal(await page.locator("#trans").isVisible(), false, "no second translation list below");
+  assert.equal(await page.locator(".surah-head").count(), 1);
+  assert.equal(await page.locator(".basmala").count(), 1);
+  await page.reload();
+  await page.waitForSelector(".frame.rows .vrow", { timeout: 15000 });
+}, { width: 390, height: 844 }));
+
+test("Side by side in IndoPak: the Arabic is the exact IndoPak words; nothing spills off a small phone", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i42");
+  await page.waitForSelector('.ip .ayah[data-k="2:255"]', { timeout: 20000 });
+  await openSettingsPick(page, "layoutSeg", "side");
+  await page.waitForSelector(".frame.rows .vrow");
+  const rows = await rowsOn(page);
+  const want = {}; for (const [loc, t] of ipWordsOn(42)) { const k = loc.split(":").slice(0, 2).join(":"); (want[k] ||= []).push(t); }
+  assert.deepEqual(rows.map(r => r.k), Object.keys(want));
+  for (const r of rows) assert.equal(r.ar, want[r.k].join(" "), r.k);
+  assert.equal(await page.$eval(".vrow .var", e => getComputedStyle(e).fontFamily.split(",")[0].replace(/"/g, "")), "IP Normal");
+  const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+  assert.ok(sw <= cw, "sideways scroll");
+  const out = await page.evaluate(() => { const b = document.querySelector(".frame.rows .body").getBoundingClientRect(); return [...document.querySelectorAll(".vrow .var,.vrow .vtr")].filter(e => { const r = e.getBoundingClientRect(); return r.left < b.left - 1 || r.right > b.right + 1; }).length; });
+  assert.equal(out, 0);
+}, { width: 360, height: 740 }));
+
+test("Side by side: tap highlights the row, recitation follows rows across pages, go-to-ayah marks the row", () => withPage({ tap: "highlight", audio: "ok" }, async ({ page }) => {
+  await page.goto(PAGE_URL + "#p1");
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await openSettingsPick(page, "layoutSeg", "side");
+  await page.click('.vrow[data-k="1:5"]');
+  await page.waitForSelector('.vrow[data-k="1:5"][data-hl="amber"]');
+  assert.equal(await page.locator("#sheet").isVisible(), false);
+  const box = await page.locator('.vrow[data-k="1:7"]').boundingBox();
+  await page.mouse.move(box.x + 10, box.y + 10); await page.mouse.down(); await page.waitForTimeout(650); await page.mouse.up();
+  await page.locator("#sheet button", { hasText: "Play from here" }).click();
+  await page.waitForSelector('.vrow.playing[data-k="1:7"]');
+  await page.waitForSelector('.vrow.playing[data-k="2:1"]', { timeout: 10000 });
+  await page.click("#playBtn");
+  await page.locator("#surahJump").selectOption("2");
+  await page.fill("#ayahJump", "5"); await page.press("#ayahJump", "Enter");
+  await page.waitForSelector('.vrow.flash[data-k="2:5"]', { timeout: 10000 });
+}));
+
+test("Side by side with translation off: Arabic rows plus a hint to choose a translation", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#openSettings");
+  await page.locator("#transSel").selectOption("none");
+  await page.locator('#layoutSeg button[data-v="side"]').click();
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".frame.rows .vrow");
+  assert.match(await page.locator(".frame.rows .empty").textContent(), /Choose a translation/);
+  assert.equal(await page.locator(".vrow").count(), 7);
+}));
 
 /* ---------- IndoPak edition (real bundled text and fonts) ---------- */
 import { readFileSync } from "node:fs";

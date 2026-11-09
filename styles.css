@@ -196,3 +196,25 @@ input[type=range]{width:100%;accent-color:var(--frame)}
 
 /* go-to-ayah: briefly mark the ayah you jumped to (after the highlight rules so it shows on top) */
 .ayah.flash,.ip .ayah.flash{background:var(--play);box-shadow:0 0 0 1.5px var(--gilt)}
+
+/* Side by side: translation on the left, Arabic on the right, one row per ayah */
+.frame.rows .body{display:flex;flex-direction:column}
+.vrow{display:grid;grid-template-columns:minmax(0,44fr) minmax(0,56fr);gap:14px;align-items:start;direction:ltr;
+  padding:12px 6px;border-top:1px solid var(--line);border-radius:6px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s}
+.vrow:first-of-type{border-top:0}
+.vrow:hover{background:var(--sel)}
+.vrow .vtr{min-width:0;display:flex;flex-direction:column;gap:4px;font-size:.95rem;line-height:1.55}
+.vrow .vtr p{margin:0}
+.vrow .vtr .ref{font-size:.75rem;color:var(--frame);font-weight:600;font-variant-numeric:tabular-nums}
+.vrow .vtr .tl{font-style:italic;color:var(--muted);font-size:.9em}
+.vrow .vtr p[dir="rtl"]{font-family:var(--f-ar-ui);font-size:1.1em;line-height:1.9;text-align:right}
+.vrow .var{min-width:0;direction:rtl;text-align:right;font-family:var(--f-quran);font-size:calc(var(--qsize)*.9);line-height:2.05;color:var(--ink)}
+.vrow .var.ipv,.basmala.ipv{font-family:"IP Normal",serif;font-size:var(--ipr);line-height:2.2}
+.frame.rows .surah-head{margin:14px 0 4px}
+.vrow[data-hl="amber"]{background:var(--hl-amber)} .vrow[data-hl="green"]{background:var(--hl-green)}
+.vrow[data-hl="blue"]{background:var(--hl-blue)} .vrow[data-hl="rose"]{background:var(--hl-rose)}
+.vrow.sel{background:var(--sel);box-shadow:inset 0 0 0 1.5px var(--frame)}
+.vrow.playing,.vrow.flash{background:var(--play);box-shadow:inset 0 0 0 1.5px var(--gilt)}
+.vrow.bm .end{color:var(--paper);background:var(--gilt);border-radius:999px;padding:0 .25em}
+.vrow.bm .ref::after{content:" · bookmarked";color:var(--gilt)}
+@media (max-width:420px){.vrow{gap:10px;padding:10px 2px}.vrow .vtr{font-size:.88rem}}

@@ -46,15 +46,16 @@ const store = {
   get(k,d){try{const v=localStorage.getItem("mushaf:"+k);return v?JSON.parse(v):d}catch(e){return d}},
   set(k,v){try{localStorage.setItem("mushaf:"+k,JSON.stringify(v))}catch(e){}}
 };
+const COLORS_OK = c => ["amber","green","blue","rose"].includes(c) ? c : "amber";
 const S = {
   page: store.get("page",1), script: store.get("script","amiriq"), size: store.get("size",1.75),
-  hlColor: store.get("hlColor","amber"), ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
+  hlColor: COLORS_OK(store.get("hlColor","amber")), tapAction: store.get("tapAction","highlight")==="menu" ? "menu" : "highlight", layout: store.get("layout","page")==="side" ? "side" : "page", ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
   bookmarks: store.get("bookmarks",[]), highlights: store.get("highlights",{}), sel:null
 };
 if(!SCRIPTS.some(x=>x.id===S.script)) S.script="amiriq";
 if(!TRANSLATIONS.some(x=>x.id===S.trans)) S.trans="en";
 if(!RECITERS.some(x=>x.id===S.reciter)) S.reciter="Alafasy_128kbps";
-const save = () => ["page","script","size","hlColor","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
+const save = () => ["page","script","size","hlColor","tapAction","layout","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
 
 /* ---------- data ---------- */
 // On its own site the app can download the JSON files directly (they are served with CORS).
@@ -260,6 +261,52 @@ function applyStyle(){
   document.documentElement.style.setProperty("--qsize", S.size+"rem");
 }
 
+function surahHeadEl(s){
+  const info = INDEX[s-1], sh = el("div",{class:"surah-head"});
+  sh.append(el("span",{class:"meta"}, info.type==="medinan"?"مدنية":"مكية"), el("span",{class:"nm"},"سورة "+info.name), el("span",{class:"meta"},"آياتها "+AR(info.total_verses)));
+  return sh;
+}
+const flagAyah = (node, k) => {
+  if(S.bookmarks.includes(k)) node.classList.add("bm");
+  if(S.highlights[k]) node.dataset.hl = S.highlights[k];
+  if(S.sel===k) node.classList.add("sel");
+  if(P.cur===k) node.classList.add("playing");
+};
+
+/* Side by side: each ayah of the page on its own row, translation on the left and Arabic on the right */
+function renderRows(body, list, bySurah, ip, textErr){
+  const T = TRANSLATIONS.find(t=>t.id===S.trans);
+  body.style.setProperty("--ipr", (1.55*S.ipScale)+"rem");
+  if(textErr) body.append(el("p",{class:"empty"},"The translation didn't load. Check your internet connection, then turn the page to try again."));
+  else if(S.trans==="none" && !S.translit) body.append(el("p",{class:"empty"},"Choose a translation in Aa to show it beside the Arabic."));
+  let cur = null;
+  for(const [s,a] of list){
+    const k = key(s,a);
+    if(s!==cur){
+      cur = s;
+      if(a===1){
+        body.append(surahHeadEl(s));
+        if(s!==1 && s!==9){
+          if(ip && IP.bismillah) body.append(el("div",{class:"basmala ipv"}, IP.bismillah.join(" ")));
+          else if(!ip && BASMALA) body.append(el("div",{class:"basmala"}, BASMALA));
+        }
+      }
+    }
+    const row = el("div",{class:"vrow","data-k":k,role:"button",tabindex:"0","aria-label":INDEX[s-1].transliteration+" "+s+":"+a});
+    flagAyah(row, k);
+    const ar = el("div",{class:"var"+(ip?" ipv":"")});
+    if(ip) IP.ayahWords[k].forEach((w,i)=>{ if(i) ar.append(" "); ar.append(w); });
+    else { ar.append(verse(bySurah[s],a).text || "", " "); ar.append(el("span",{class:"end"},"﴿"+AR(a)+"﴾")); }
+    const tr = el("div",{class:"vtr"});
+    tr.append(el("span",{class:"ref"}, s+":"+a));
+    const v = bySurah[s] ? verse(bySurah[s],a) : {};
+    if(S.translit && v.transliteration) tr.append(el("p",{class:"tl"}, v.transliteration));
+    if(S.trans!=="none" && v.translation) tr.append(el("p", T.rtl?{dir:"rtl"}:{}, v.translation));
+    row.append(tr, ar);
+    body.append(row);
+  }
+}
+
 let renderToken = 0;
 async function renderPage(){
   const token = ++renderToken;
@@ -275,6 +322,7 @@ async function renderPage(){
   try{ history.replaceState(null,"",(ip?"#i":"#p")+p) }catch(e){}
 
   // Madani pages need the Uthmani text; IndoPak pages need it only for translations
+  const side = S.layout==="side";
   let chs = null, textErr = null;
   if(!ip || S.trans!=="none" || S.translit){
     try{
@@ -288,10 +336,18 @@ async function renderPage(){
 
   const page = $("page"); page.replaceChildren();
   if(list.some(([s,a])=>S.bookmarks.includes(key(s,a)))) page.append(el("div",{class:"ribbon","aria-hidden":"true"}));
-  const fr = el("div",{class:"frame"+(ip?" ip":"")});
+  const fr = el("div",{class:"frame"+(ip?" ip":"")+(side?" rows":"")});
   const head = el("div",{class:"runhead"});
   head.append(el("span",{}, surahs.map(s=>"سورة "+INDEX[s-1].name).join(" · ")), el("span",{},"الجزء "+AR(PAGE_JUZ[p])));
   const body = el("div",{class:"body"});
+  if(side){
+    fr.append(head, body, el("div",{class:"folio"},AR(p)));
+    page.append(fr);
+    renderRows(body, list, bySurah, ip, ip ? textErr : null);
+    $("trans").hidden = true;
+    updatePlayer();
+    return;
+  }
   if(ip){
     fr.append(head, body, el("div",{class:"folio"},AR(p)));
     page.append(fr);
@@ -457,7 +513,7 @@ function markPlaying(){
   document.querySelectorAll(".playing").forEach(e=>e.classList.remove("playing"));
   if(!P.cur) return;
   document.querySelectorAll('[data-k="'+P.cur+'"]').forEach(e=>e.classList.add("playing"));
-  const a = document.querySelector('.ayah[data-k="'+P.cur+'"]');
+  const a = document.querySelector('#page [data-k="'+P.cur+'"]');
   if(a && P.playing) a.scrollIntoView({block:"nearest",behavior:"smooth"});
 }
 function updatePlayer(){
@@ -520,10 +576,27 @@ async function ayahSheet(k){
   openSheet(nodes);
 }
 
+function choice(label, id, opts, value, onPick, note){
+  const f = el("div",{class:"field"}); f.append(el("span",{class:"lbl"},label));
+  const seg = el("div",{class:"seg",id});
+  for(const o of opts){
+    const b = el("button",{"aria-pressed":String(value===o.v),"data-v":o.v});
+    b.append(el("b",{},o.name), el("span",{class:"cap"},o.cap));
+    b.onclick = ()=>onPick(o.v);
+    seg.append(b);
+  }
+  f.append(seg); if(note) f.append(el("span",{class:"cap"},note));
+  return f;
+}
 function settingsSheet(){
   const nodes = [el("h3",{},"Reading settings")];
+  nodes.push(choice("Layout","layoutSeg",[
+      {v:"page",name:"Mushaf page",cap:"Like the printed book"},
+      {v:"side",name:"Side by side",cap:"Translation left, Arabic right"}],
+    S.layout, v=>{ S.layout=v; save(); renderPage(); settingsSheet(); },
+    S.layout==="side" && S.trans==="none" && !S.translit ? "Choose a translation below to show it beside the Arabic." : null));
   const f1 = el("div",{class:"field"}); f1.append(el("span",{class:"lbl"},"Mushaf script style"));
-  const seg = el("div",{class:"seg"});
+  const seg = el("div",{class:"seg",id:"scriptSeg"});
   for(const x of SCRIPTS){
     const b = el("button",{"aria-pressed":String(S.script===x.id),"data-script":x.id});
     const sample = el("span",{class:"sample",style:"font-family:"+x.font}, x.edition==="indopak" ? (IP.bismillah||[]).join(" ") : (BASMALA || ""));
@@ -539,7 +612,8 @@ function settingsSheet(){
     f2.firstChild.setAttribute("for","ipsize");
     const r = el("input",{type:"range",id:"ipsize",min:"1",max:"2.2",step:"0.05",value:String(S.ipScale)});
     const cap = el("span",{class:"cap",id:"ipsizeNote"});
-    const note = ()=>{ cap.textContent = S.ipScale > 1.001
+    const note = ()=>{ cap.textContent = S.layout==="side" ? "Sets the size of the Arabic beside the translation."
+      : S.ipScale > 1.001
       ? "Larger text: lines wrap to fit your screen. Move the slider all the way left to see the printed 15-line page."
       : "Printed page: the 15 lines match the Taj Mushaf. Move the slider right for larger text."; };
     let t; r.oninput = ()=>{ S.ipScale = +r.value; save(); note(); clearTimeout(t); t = setTimeout(renderPage, 60); };
@@ -557,6 +631,19 @@ function settingsSheet(){
   const cl = el("label",{class:"check"}); const cb = el("input",{type:"checkbox",id:"translit"}); cb.checked = S.translit;
   cb.onchange = ()=>{ S.translit=cb.checked; save(); renderPage(); }; cl.append(cb, "Show transliteration");
   f3.append(ts, cl); nodes.push(f3);
+
+  nodes.push(choice("Tapping an ayah","tapSeg",[
+      {v:"highlight",name:"Highlights it",cap:"Reading mode · hold for the menu"},
+      {v:"menu",name:"Opens the menu",cap:"Bookmark, copy, play"}],
+    S.tapAction, v=>{ S.tapAction=v; save(); settingsSheet(); }));
+  const fc = el("div",{class:"field"}); fc.append(el("span",{class:"lbl"},"Highlight colour"));
+  const cr = el("div",{class:"row",id:"hlColorSet"});
+  for(const c of COLORS){
+    const sw = el("button",{class:"swatch "+c,"data-c":c,"aria-label":c,"aria-pressed":String(S.hlColor===c)});
+    sw.onclick = ()=>{ S.hlColor=c; hlErase=false; save(); updateHlBar(); settingsSheet(); };
+    cr.append(sw);
+  }
+  fc.append(cr); nodes.push(fc);
 
   nodes.push(reciterField());
   openSheet(nodes);
@@ -618,29 +705,35 @@ let tt; function toast(m){ const t=$("toast"); t.textContent=m; t.hidden=false; 
 /* ---------- tapping ayat: menu, or quick highlighting in Highlight mode ---------- */
 let hlMode = false;
 function setHlMode(on){
-  hlMode = on; $("hlbar").hidden = !on; document.body.classList.toggle("hl-on", on);
+  hlMode = on; if(!on) hlErase = false; $("hlbar").hidden = !on; document.body.classList.toggle("hl-on", on);
   $("hlBtn").setAttribute("aria-pressed", String(on));
   if(on) updateHlBar();
 }
 function updateHlBar(){
-  document.querySelectorAll("#hlColors .swatch").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.c===S.hlColor)));
+  document.querySelectorAll("#hlColors .swatch").forEach(b=>b.setAttribute("aria-pressed", String(hlErase ? b.dataset.c==="" : b.dataset.c===S.hlColor)));
 }
 // apply one ayah's highlight to everything showing it, without redrawing the page
 function paintHl(k){
   document.querySelectorAll('[data-k="'+k+'"]').forEach(x=>{ if(S.highlights[k]) x.dataset.hl = S.highlights[k]; else delete x.dataset.hl; });
 }
+let hlErase = false;
 function quickHighlight(k){
-  const c = S.hlColor, had = S.highlights[k];
+  const c = hlErase ? "" : S.hlColor, had = S.highlights[k];
   if(!c || had===c) delete S.highlights[k]; else S.highlights[k] = c;
   if(had===S.highlights[k]) return;
   save(); updateCount(); paintHl(k);
 }
-function tapAyah(k){ if(hlMode) quickHighlight(k); else ayahSheet(k); }
+const tapHighlights = () => hlMode || S.tapAction==="highlight";
+function tapAyah(k){
+  if(!tapHighlights()) return ayahSheet(k);
+  quickHighlight(k);
+  if(!store.get("tipHold",false)){ store.set("tipHold",true); toast("Highlighted. Press and hold an ayah to bookmark, copy or play it."); }
+}
 
 let holdT = null, held = false;
 const holdStart = e=>{
   const x = e.target.closest("[data-k]"); held = false; clearTimeout(holdT);
-  if(!x || !hlMode) return;
+  if(!x || !tapHighlights()) return;
   holdT = setTimeout(()=>{ held = true; ayahSheet(x.dataset.k); }, 500);   // press and hold: full menu
 };
 const holdEnd = ()=>clearTimeout(holdT);
@@ -654,12 +747,12 @@ for(const id of ["page","trans"]){
   box.addEventListener("click",pick);
   box.addEventListener("pointerdown",holdStart);
   for(const ev of ["pointerup","pointerleave","pointercancel","scroll"]) box.addEventListener(ev,holdEnd,{passive:true});
-  box.addEventListener("contextmenu",e=>{ const x=e.target.closest("[data-k]"); if(x && hlMode){ e.preventDefault(); clearTimeout(holdT); if(!held) ayahSheet(x.dataset.k); held = false; } });
+  box.addEventListener("contextmenu",e=>{ const x=e.target.closest("[data-k]"); if(x && tapHighlights()){ e.preventDefault(); clearTimeout(holdT); if(!held) ayahSheet(x.dataset.k); held = false; } });
 }
 window.addEventListener("scroll",holdEnd,{passive:true});
 $("hlBtn").onclick = ()=>setHlMode(!hlMode);
 $("hlDone").onclick = ()=>setHlMode(false);
-$("hlColors").onclick = e=>{ const b = e.target.closest(".swatch"); if(!b) return; S.hlColor = b.dataset.c; save(); updateHlBar(); };
+$("hlColors").onclick = e=>{ const b = e.target.closest(".swatch"); if(!b) return; if(b.dataset.c){ S.hlColor = b.dataset.c; hlErase = false; save(); } else hlErase = true; updateHlBar(); };
 document.addEventListener("keydown",e=>{
   if(e.key==="Escape" && !$("sheet").hidden) return closeSheet();
   if((e.key==="Enter"||e.key===" ") && e.target.dataset && e.target.dataset.k){ e.preventDefault(); return tapAyah(e.target.dataset.k); }
@@ -678,7 +771,7 @@ function goToAyah(s, a){
   const k = key(s,a);
   $("surahJump").value = s; $("ayahJump").value = a;
   const mark = ()=>{
-    const els = document.querySelectorAll('.ayah[data-k="'+k+'"]'); if(!els.length) return false;
+    const els = document.querySelectorAll('#page [data-k="'+k+'"]'); if(!els.length) return false;
     els[0].scrollIntoView({block:"center",behavior:"smooth"});
     els.forEach(x=>x.classList.add("flash")); setTimeout(()=>els.forEach(x=>x.classList.remove("flash")), 1800);
     return true;
