@@ -1122,6 +1122,24 @@ test("Lock screen and car controls: set each time playback starts, previous/next
   assert.equal(await page.evaluate(() => navigator.audioSession.type), "playback", "plays as media, not muted by the silent switch");
 }));
 
+test("Translation size: its own slider resizes the translation below the page and side by side, and is remembered", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  const size = sel => page.$eval(sel, e => parseFloat(getComputedStyle(e).fontSize));
+  const before = await size(".trow p");
+  const quran = await size(".ayah");
+  await page.click("#openSettings"); await page.locator("#tsize").fill("1.6"); await page.keyboard.press("Escape");
+  assert.equal(await size(".trow p"), 1.6 * 16);
+  assert.ok(await size(".trow p") > before);
+  assert.equal(await size(".ayah"), quran, "the Quran text size is unchanged");
+  await page.click("#openSettings"); await page.locator('#layoutSeg button[data-v="side"]').click(); await page.keyboard.press("Escape");
+  await page.waitForSelector(".vrow .vtr p");
+  assert.equal(await size(".vrow .vtr p"), 1.6 * 16);
+  await page.reload(); await page.waitForSelector(".vrow .vtr p", { timeout: 15000 });
+  assert.equal(await size(".vrow .vtr p"), 1.6 * 16);
+  const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+  assert.ok(sw <= cw, "no sideways scrolling with large translation text");
+}, { width: 390, height: 844 }));
+
 /* ---------- page colours ---------- */
 const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const lum = c => { const [r, g, b] = c.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };

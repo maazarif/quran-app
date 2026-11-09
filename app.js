@@ -49,13 +49,13 @@ const store = {
 const COLORS_OK = c => ["amber","green","blue","rose"].includes(c) ? c : "amber";
 const S = {
   page: store.get("page",1), script: store.get("script","amiriq"), size: store.get("size",1.75),
-  hlColor: COLORS_OK(store.get("hlColor","amber")), tapAction: store.get("tapAction","mark")==="menu" ? "menu" : "mark", current: store.get("current",null), wake: store.get("wake",false), afterSurah: ["next","repeat","stop"].includes(store.get("afterSurah","next")) ? store.get("afterSurah","next") : "next", paper: store.get("paper","auto"), layout: store.get("layout","page")==="side" ? "side" : "page", ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
+  hlColor: COLORS_OK(store.get("hlColor","amber")), tapAction: store.get("tapAction","mark")==="menu" ? "menu" : "mark", current: store.get("current",null), wake: store.get("wake",false), afterSurah: ["next","repeat","stop"].includes(store.get("afterSurah","next")) ? store.get("afterSurah","next") : "next", paper: store.get("paper","auto"), layout: store.get("layout","page")==="side" ? "side" : "page", ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), tsize: Math.min(1.8, Math.max(0.8, +store.get("tsize",0.95) || 0.95)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
   bookmarks: store.get("bookmarks",[]), highlights: store.get("highlights",{}), sel:null
 };
 if(!SCRIPTS.some(x=>x.id===S.script)) S.script="amiriq";
 if(!TRANSLATIONS.some(x=>x.id===S.trans)) S.trans="en";
 if(!RECITERS.some(x=>x.id===S.reciter)) S.reciter="Alafasy_128kbps";
-const save = () => ["page","script","size","hlColor","tapAction","current","wake","afterSurah","paper","layout","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
+const save = () => ["page","script","size","hlColor","tapAction","current","wake","afterSurah","paper","tsize","layout","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
 
 /* ---------- data ---------- */
 // On its own site the app can download the JSON files directly (they are served with CORS).
@@ -270,6 +270,7 @@ function applyStyle(){
   const root = document.documentElement;
   root.style.setProperty("--f-quran", sc.font);
   root.style.setProperty("--qsize", S.size+"rem");
+  root.style.setProperty("--tsize", S.tsize+"rem");
   if(!PAPERS.some(x=>x.id===S.paper)) S.paper = "auto";
   if(S.paper==="auto") delete root.dataset.paper; else root.dataset.paper = S.paper;
   // phone status bar colour follows the page
@@ -815,7 +816,10 @@ function settingsSheet(){
   ts.onchange = ()=>{ S.trans=ts.value; save(); renderPage(); };
   const cl = el("label",{class:"check"}); const cb = el("input",{type:"checkbox",id:"translit"}); cb.checked = S.translit;
   cb.onchange = ()=>{ S.translit=cb.checked; save(); renderPage(); }; cl.append(cb, "Show transliteration");
-  f3.append(ts, cl); nodes.push(f3);
+  const tl = el("label",{class:"lbl",for:"tsize"},"Translation size");
+  const tr = el("input",{type:"range",id:"tsize",min:"0.8",max:"1.8",step:"0.05",value:String(S.tsize)});
+  tr.oninput = ()=>{ S.tsize = +tr.value; applyStyle(); save(); };
+  f3.append(ts, cl, tl, tr); nodes.push(f3);
 
   nodes.push(choice("Tapping an ayah","tapSeg",[
       {v:"mark",name:"Marks your place",cap:"One ayah at a time · hold for the menu"},
