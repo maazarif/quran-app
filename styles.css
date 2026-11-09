@@ -226,3 +226,27 @@ input[type=range]{width:100%;accent-color:var(--frame)}
 .vrow.cur{box-shadow:inset 3px 0 0 var(--frame)}
 .btn.danger{background:var(--danger);border-color:var(--danger);color:var(--paper)}
 .clearhl{padding-top:12px;border-top:1px solid var(--line)}
+
+/* Page colour (Aa › Page colour). "Auto" follows the phone's light or dark setting; the others always apply. */
+:root[data-paper="white"]{--ground:#e8ecea;--paper:#ffffff;--ink:#121815;--muted:#56625c;--frame:#1f5a4b;--gilt:#9a7630;--line:#d7dfda;--chip:#f0f3f1;
+  --hl-amber:rgba(240,196,70,.40);--hl-green:rgba(90,180,120,.32);--hl-blue:rgba(90,150,220,.30);--hl-rose:rgba(225,110,130,.30);
+  --sel:rgba(31,90,75,.12);--cur:rgba(31,90,75,.16);--play:rgba(168,131,58,.22);--danger:#9b2c2c;color-scheme:light}
+:root[data-paper="cream"]{--ground:#e3e8e2;--paper:#fbf8ee;--ink:#1d2421;--muted:#5f6d66;--frame:#1f5a4b;--gilt:#a8833a;--line:#cfd8d0;--chip:#eef2ec;
+  --hl-amber:rgba(240,196,70,.38);--hl-green:rgba(90,180,120,.30);--hl-blue:rgba(90,150,220,.28);--hl-rose:rgba(225,110,130,.28);
+  --sel:rgba(31,90,75,.14);--cur:rgba(31,90,75,.17);--play:rgba(168,131,58,.22);--danger:#9b2c2c;color-scheme:light}
+:root[data-paper="sepia"]{--ground:#e4d6ba;--paper:#f6edd8;--ink:#2f2416;--muted:#6b5a42;--frame:#6b4a24;--gilt:#9a6f2a;--line:#dccbab;--chip:#efe3c9;
+  --hl-amber:rgba(232,180,60,.40);--hl-green:rgba(110,160,90,.32);--hl-blue:rgba(90,140,200,.28);--hl-rose:rgba(215,100,110,.28);
+  --sel:rgba(107,74,36,.13);--cur:rgba(107,74,36,.19);--play:rgba(154,111,42,.24);--danger:#93302a;color-scheme:light}
+:root[data-paper="mint"]{--ground:#d9e7df;--paper:#f0f8f3;--ink:#14231c;--muted:#52665c;--frame:#1b5e47;--gilt:#957636;--line:#c6d8cd;--chip:#e2eee7;
+  --hl-amber:rgba(240,196,70,.40);--hl-green:rgba(80,175,115,.30);--hl-blue:rgba(90,150,220,.28);--hl-rose:rgba(225,110,130,.28);
+  --sel:rgba(27,94,71,.13);--cur:rgba(27,94,71,.18);--play:rgba(149,118,54,.22);--danger:#9b2c2c;color-scheme:light}
+:root[data-paper="night"]{--ground:#0c1311;--paper:#161f1c;--ink:#ebe4cf;--muted:#9aa89f;--frame:#4f9a83;--gilt:#cfae62;--line:#2a3632;--chip:#1e2a26;
+  --hl-amber:rgba(230,185,60,.26);--hl-green:rgba(90,190,130,.22);--hl-blue:rgba(100,160,235,.24);--hl-rose:rgba(230,115,140,.24);
+  --sel:rgba(120,200,170,.16);--cur:rgba(120,200,170,.24);--play:rgba(207,174,98,.22);--danger:#e08a8a;color-scheme:dark}
+:root[data-paper="black"]{--ground:#000000;--paper:#050505;--ink:#e9e4d4;--muted:#9b9b95;--frame:#4a947d;--gilt:#c9a95c;--line:#1f1f1f;--chip:#111111;
+  --hl-amber:rgba(230,185,60,.28);--hl-green:rgba(90,190,130,.24);--hl-blue:rgba(100,160,235,.26);--hl-rose:rgba(230,115,140,.26);
+  --sel:rgba(120,200,170,.16);--cur:rgba(120,200,170,.24);--play:rgba(207,174,98,.24);--danger:#e08a8a;color-scheme:dark}
+.paperseg{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px}
+.paperseg button{border:1px solid var(--line);background:var(--chip);border-radius:12px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.78rem}
+.paperseg button[aria-pressed="true"]{border-color:var(--frame);box-shadow:inset 0 0 0 1px var(--frame)}
+.paperseg .pv{width:44px;height:30px;border-radius:6px;border:1px solid rgba(127,127,127,.35);display:flex;align-items:center;justify-content:center;font:600 .85rem/1 var(--f-ui)}

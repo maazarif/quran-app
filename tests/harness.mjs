@@ -58,12 +58,14 @@ const chapter = (lang, s) => ({
 });
 
 const CORS = { "access-control-allow-origin": "*" };
+const LONG_MP3 = readFileSync(new URL("./surah-silence.mp3", import.meta.url));
 const js = body => ({ status: 200, headers: {"content-type":"application/javascript", ...CORS}, body });
 const data = (obj, esm) => esm ? js("export default " + JSON.stringify(obj)) : { status: 200, headers: {"content-type":"application/json", ...CORS}, body: JSON.stringify(obj) };
 
-/** opts: { tap: "menu"|"highlight" (what tapping an ayah does at first launch), iife: "ok"|"404"|"noglobal", iifeFile, esm: "ok"|"404", text: "ok"|"404", index: "ok"|"404", audio: "ok"|"404", sw: false|true, userAgent } */
+/** opts: { timings: "404"|"ok", tap: "menu"|"highlight" (what tapping an ayah does at first launch), iife: "ok"|"404"|"noglobal", iifeFile, esm: "ok"|"404", text: "ok"|"404", index: "ok"|"404", audio: "ok"|"404", sw: false|true, userAgent } */
 export async function launch(opts = {}, viewport = {width: 1100, height: 900}) {
-  const o = { iife:"ok", esm:"ok", esmShape:"needsLists", hafsPath:"404", text:"ok", index:"ok", audio:"404", sw:false, ...opts };
+  // timings "404" by default: most tests drive the one-file-per-ayah player; the whole-surah player tests turn them on
+  const o = { timings:"404", iife:"ok", esm:"ok", esmShape:"needsLists", hafsPath:"404", text:"ok", index:"ok", audio:"404", sw:false, ...opts };
   const browser = await chromium.launch({ executablePath: existsSync("/usr/bin/google-chrome") ? "/usr/bin/google-chrome" : undefined,
     args: ["--autoplay-policy=no-user-gesture-required"] });
   const context = await browser.newContext({ viewport, serviceWorkers: o.sw ? "allow" : "block", ...(o.userAgent ? {userAgent:o.userAgent} : {}) });
@@ -78,6 +80,7 @@ export async function launch(opts = {}, viewport = {width: 1100, height: 900}) {
     log.requests.push(url);
     if (url.startsWith(ORIGIN + "/")) {
       let path = new URL(url).pathname.slice(1) || "index.html";
+      if (path.startsWith("data/timings/") && o.timings === "404") return route.fulfill({ status: 404, body: "" });
       const file = new URL(path, APP);
       if (!existsSync(file) || path.startsWith("tests/")) return route.fulfill({ status: 404, body: "" });
       return route.fulfill({ status: 200, headers: { "content-type": TYPES[extname(path)] || "application/octet-stream" }, body: readFileSync(file) });
@@ -105,6 +108,16 @@ export async function launch(opts = {}, viewport = {width: 1100, height: 900}) {
       }
       if (o.text === "404") return route.fulfill({ status: 404, headers: CORS, body: "" });
       return route.fulfill(data(chapter(lang, +n), esm));
+    }
+    // whole-surah recordings (cdn.mp3quran.net, audio-cdn.tarteel.ai, download.quranicaudio.com): a 30-minute silent
+    // stand-in, served in byte ranges like a real audio host so the player can seek
+    if (/^https:\/\/(cdn\.mp3quran\.net|audio-cdn\.tarteel\.ai|download\.quranicaudio\.com)\//.test(url)) {
+      if (o.audio === "404" || o.surahAudio === "404") return route.fulfill({ status: 404, body: "" });
+      const buf = LONG_MP3, range = /bytes=(\d+)-(\d*)/.exec(route.request().headers()["range"] || "");
+      const headers = { "content-type": "audio/mpeg", "accept-ranges": "bytes", ...CORS };
+      if (!range) return route.fulfill({ status: 200, headers: { ...headers, "content-length": String(buf.length) }, body: buf });
+      const from = +range[1], to = range[2] ? Math.min(+range[2], buf.length - 1) : buf.length - 1;
+      return route.fulfill({ status: 206, headers: { ...headers, "content-range": `bytes ${from}-${to}/${buf.length}`, "content-length": String(to - from + 1) }, body: buf.subarray(from, to + 1) });
     }
     if (url.startsWith("https://everyayah.com/")) {
       if (o.audio === "404") return route.fulfill({ status: 404, body: "" });

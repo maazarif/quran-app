@@ -1,6 +1,6 @@
 # Mushaf Reader
 
-An installable Quran web app with two Mushaf editions: the 604-page Madani Mushaf (Uthmani script, four font styles) and the 610-page IndoPak 15-line Taj Mushaf (Nastaleeq script, with the printed copy's exact line breaks). It has 10 translations (below the page, or side by side with the Arabic), 8 reciters, bookmarks and highlights. By default, tapping an ayah marks your place (one ayah at a time; press and hold for bookmark, highlight, copy and play); lasting highlights come from the highlighter button. Both can be changed in settings. It installs to a phone's home screen and works offline for pages you have already opened.
+An installable Quran web app with two Mushaf editions: the 604-page Madani Mushaf (Uthmani script, four font styles) and the 610-page IndoPak 15-line Taj Mushaf (Nastaleeq script, with the printed copy's exact line breaks). It has page colours (auto, white, cream, sepia, mint, night, black), 10 translations (below the page, or side by side with the Arabic), 8 reciters, bookmarks and highlights. By default, tapping an ayah marks your place (one ayah at a time; press and hold for bookmark, highlight, copy and play); lasting highlights come from the highlighter button. Both can be changed in settings. It installs to a phone's home screen and works offline for pages you have already opened.
 
 ## Put it online (free, about 5 minutes)
 
@@ -44,7 +44,8 @@ The Quran text is never typed or edited by hand. It is downloaded from these sou
 | IndoPak text and 15-line, 610-page layout (Taj / Qudratullah), word by word | QUL, Quranic Universal Library by Tarteel AI; bundled in `data/` with checksums (see `data/SOURCES.md`) | fixed copy |
 | IndoPak Nastaleeq font (Hanafi, waqf lazim; normal, compact and compressed widths) | QUL / Tarteel; bundled in `fonts/indopak/` | fixed copy |
 | Page and juz layout (604-page Madani Mushaf, Hafs) | `quran-meta` package on jsDelivr | 6.0.17 (pinned) |
-| Recitation audio | EveryAyah.com, one file per ayah | — |
+| Recitation audio | Whole-surah recordings from MP3Quran, Tarteel and QuranicAudio (one continuous recording per surah, so it keeps playing with the screen locked); EveryAyah.com per-ayah files as a fallback | — |
+| Ayah timings inside each surah recording | quranic-universal-audio v4.0.0 by QUD Technologies, CC BY 4.0; bundled in `data/timings/` (see `data/SOURCES.md`) | fixed copy |
 | Fonts | Amiri Quran, Scheherazade New, Amiri, Noto Naskh Arabic (Google Fonts) | — |
 
 Several translations are copyrighted. Check each translation's terms before publishing the app widely.

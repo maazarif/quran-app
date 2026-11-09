@@ -49,13 +49,13 @@ const store = {
 const COLORS_OK = c => ["amber","green","blue","rose"].includes(c) ? c : "amber";
 const S = {
   page: store.get("page",1), script: store.get("script","amiriq"), size: store.get("size",1.75),
-  hlColor: COLORS_OK(store.get("hlColor","amber")), tapAction: store.get("tapAction","mark")==="menu" ? "menu" : "mark", current: store.get("current",null), layout: store.get("layout","page")==="side" ? "side" : "page", ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
+  hlColor: COLORS_OK(store.get("hlColor","amber")), tapAction: store.get("tapAction","mark")==="menu" ? "menu" : "mark", current: store.get("current",null), wake: store.get("wake",false), paper: store.get("paper","auto"), layout: store.get("layout","page")==="side" ? "side" : "page", ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
   bookmarks: store.get("bookmarks",[]), highlights: store.get("highlights",{}), sel:null
 };
 if(!SCRIPTS.some(x=>x.id===S.script)) S.script="amiriq";
 if(!TRANSLATIONS.some(x=>x.id===S.trans)) S.trans="en";
 if(!RECITERS.some(x=>x.id===S.reciter)) S.reciter="Alafasy_128kbps";
-const save = () => ["page","script","size","hlColor","tapAction","current","layout","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
+const save = () => ["page","script","size","hlColor","tapAction","current","wake","paper","layout","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
 
 /* ---------- data ---------- */
 // On its own site the app can download the JSON files directly (they are served with CORS).
@@ -255,10 +255,30 @@ async function chapter(lang, s){
 const verse = (ch, a) => (ch.verses || [])[a-1] || {};
 
 /* ---------- rendering ---------- */
+// Page colours. The preview colours here only draw the swatches in settings; the page itself uses styles.css.
+const PAPERS = [
+  {id:"auto", name:"Auto",  bg:"linear-gradient(135deg,#fbf8ee 50%,#161f1c 50%)", fg:"#1f5a4b"},
+  {id:"white",name:"White", bg:"#ffffff", fg:"#121815"},
+  {id:"cream",name:"Cream", bg:"#fbf8ee", fg:"#1d2421"},
+  {id:"sepia",name:"Sepia", bg:"#f6edd8", fg:"#2f2416"},
+  {id:"mint", name:"Mint",  bg:"#f0f8f3", fg:"#14231c"},
+  {id:"night",name:"Night", bg:"#161f1c", fg:"#ebe4cf"},
+  {id:"black",name:"Black", bg:"#050505", fg:"#e9e4d4"}
+];
 function applyStyle(){
   const sc = SCRIPTS.find(x=>x.id===S.script);
-  document.documentElement.style.setProperty("--f-quran", sc.font);
-  document.documentElement.style.setProperty("--qsize", S.size+"rem");
+  const root = document.documentElement;
+  root.style.setProperty("--f-quran", sc.font);
+  root.style.setProperty("--qsize", S.size+"rem");
+  if(!PAPERS.some(x=>x.id===S.paper)) S.paper = "auto";
+  if(S.paper==="auto") delete root.dataset.paper; else root.dataset.paper = S.paper;
+  // phone status bar colour follows the page
+  let m = document.getElementById("paperColor");
+  if(S.paper==="auto"){ if(m) m.remove(); }
+  else {
+    if(!m){ m = document.createElement("meta"); m.name = "theme-color"; m.id = "paperColor"; document.head.append(m); }
+    m.content = getComputedStyle(root).getPropertyValue("--ground").trim();
+  }
 }
 
 function surahHeadEl(s){
@@ -492,28 +512,125 @@ function go(p, keepAudio){
   S.page = p; S.sel = null; save(); renderPage(); if(!keepAudio) window.scrollTo({top:0,behavior:"smooth"});
 }
 
-/* ---------- recitation ---------- */
-const P = { audio:new Audio(), cur:null, playing:false, failed:false };
+/* ---------- recitation ----------
+   Each surah plays as one continuous recording, and the app follows the ayat with timing data
+   (data/timings, see data/SOURCES.md). One recording per surah is what lets iPhones keep reciting
+   with the screen locked or in another app. If the timings can't load, the app falls back to one
+   short file per ayah (EveryAyah), which iPhones stop at the end of an ayah when locked. */
+const P = { audio:new Audio(), cur:null, playing:false, failed:false, mode:null, surah:null, rows:null, timings:null, timingsFor:null, seek:null, lock:null };
 P.audio.preload = "auto";
-const audioUrl = k => { const [s,a]=k.split(":").map(Number); return AUDIO+S.reciter+"/"+String(s).padStart(3,"0")+String(a).padStart(3,"0")+".mp3"; };
+window.mushafAudio = P.audio;   // lets the tests move through a recording
+const ayahUrl = k => { const [s,a]=k.split(":").map(Number); return AUDIO+S.reciter+"/"+String(s).padStart(3,"0")+String(a).padStart(3,"0")+".mp3"; };
+const audioUrl = k => P.mode==="surah" && P.timings ? P.timings.audio[k.split(":")[0]] : ayahUrl(k);
+const TIMINGS = {};
+function loadTimings(id){
+  if(!TIMINGS[id]) TIMINGS[id] = fetch("data/timings/"+id+".json").then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(t=>{ for(const s in t.ayat) t.ayat[s].sort((x,y)=>x[1]-y[1]); return t; })
+    .catch(e=>{ delete TIMINGS[id]; throw e; });
+  return TIMINGS[id];
+}
+function useTimings(){ // ready-made timings for the chosen reciter, loading them if needed
+  if(P.timingsFor===S.reciter && P.timings) return true;
+  const id = S.reciter;
+  loadTimings(id).then(t=>{ if(S.reciter===id){ P.timings = t; P.timingsFor = id; } }).catch(()=>{});
+  return false;
+}
 function nextKey(k){
   const [s,a] = k.split(":").map(Number);
-  if(a < INDEX[s-1].total_verses) return key(s,a+1);
+  if(a < SURAH_N[s-1]) return key(s,a+1);
   return s<114 ? key(s+1,1) : null;
 }
-function playFrom(k){
-  P.cur = k; P.failed = false; P.audio.src = audioUrl(k);
-  if(!pageHas(S.page,k)) go(AYAH_PAGE[k],true); else markPlaying();
-  P.audio.play().then(()=>{ P.playing=true; updatePlayer(); }).catch(()=>{ P.playing=false; P.failed=true; updatePlayer(); });
+function prevKey(k){
+  const [s,a] = k.split(":").map(Number);
+  if(a > 1) return key(s,a-1);
+  return s>1 ? key(s-1,SURAH_N[s-2]) : null;
 }
-P.audio.addEventListener("ended", ()=>{ const n = nextKey(P.cur); if(n) playFrom(n); else { P.playing=false; updatePlayer(); } });
-P.audio.addEventListener("error", ()=>{ if(P.cur){ P.playing=false; P.failed=true; updatePlayer(); } });
+function setCur(k){
+  if(k===P.cur) return;
+  P.cur = k;
+  if(!pageHas(S.page,k)) go(AYAH_PAGE[k],true); else markPlaying();
+  updatePlayer();
+}
+function startPlay(){
+  P.audio.play().then(()=>{ P.playing=true; P.failed=false; updatePlayer(); keepAwake(true); })
+    .catch(err=>{ if(err && err.name==="AbortError") return; fallbackOrFail(); });
+}
+function fallbackOrFail(){
+  if(P.mode==="surah" && P.cur){ P.mode = "ayah"; P.surah = null; playAyahFile(P.cur); return; }
+  P.playing=false; P.failed=true; updatePlayer();
+}
+function playAyahFile(k){
+  P.mode = "ayah"; P.cur = k; P.failed = false; P.audio.src = ayahUrl(k);
+  if(!pageHas(S.page,k)) go(AYAH_PAGE[k],true); else markPlaying();
+  startPlay();
+}
+function playFrom(k){
+  P.failed = false;
+  if(!useTimings()) return playAyahFile(k);
+  const T = P.timings, [s,a] = k.split(":").map(Number);
+  const can = T.ayat[s].filter(r=>r.length===3);
+  const row = can.find(r=>r[0]===a) || can.find(r=>r[0]>a);   // an ayah missing from a recording: start at the next one
+  if(!row){ const n = s<114 ? key(s+1,1) : null; if(n) return playFrom(n); return; }
+  P.mode = "surah";
+  const url = T.audio[s];
+  if(P.surah!==s || !P.audio.src || P.audio.src!==url){ P.audio.src = url; P.surah = s; P.rows = T.ayat[s]; }
+  const at = (row[0]===1 ? 0 : row[1]) / 1000;   // ayah 1 starts with the Bismillah before it
+  P.cur = null; setCur(key(s,row[0]));
+  seekTo(at);
+  startPlay();
+}
+function seekTo(sec){
+  if(P.audio.readyState >= 1){ try { P.audio.currentTime = sec; P.seek = null; return; } catch(e){} }
+  P.seek = sec;
+}
+P.audio.addEventListener("loadedmetadata", ()=>{ if(P.seek!=null){ try { P.audio.currentTime = P.seek; } catch(e){} P.seek = null; } });
+// follow the recording: which ayah is being recited right now
+P.audio.addEventListener("timeupdate", ()=>{
+  if(P.mode!=="surah" || !P.rows || P.seek!=null) return;
+  const t = P.audio.currentTime*1000;
+  let row = null;
+  for(const r of P.rows){ if(r[1] <= t + 40) row = r; else break; }
+  if(row) setCur(key(P.surah,row[0]));
+});
+P.audio.addEventListener("ended", ()=>{
+  if(P.mode==="surah"){ const n = P.surah<114 ? key(P.surah+1,1) : null; if(n) playFrom(n); else { P.playing=false; keepAwake(false); updatePlayer(); } return; }
+  const n = P.cur && nextKey(P.cur); if(n) playAyahFile(n); else { P.playing=false; keepAwake(false); updatePlayer(); }
+});
+P.audio.addEventListener("error", ()=>{ if(P.cur && P.audio.getAttribute("src")) fallbackOrFail(); });
+// pauses and plays from the lock screen, headphones or a phone call
+P.audio.addEventListener("pause", ()=>{ if(!P.audio.ended && P.playing){ P.playing=false; keepAwake(false); updatePlayer(); } });
+P.audio.addEventListener("play", ()=>{ if(!P.playing){ P.playing=true; updatePlayer(); } });
 function togglePlay(){
-  if(P.playing){ P.audio.pause(); P.playing=false; updatePlayer(); return; }
-  if(P.cur && !P.failed && pageHas(S.page,P.cur) && P.audio.src){ P.audio.play().then(()=>{P.playing=true;updatePlayer()}).catch(()=>{P.failed=true;updatePlayer()}); return; }
+  if(P.playing){ P.audio.pause(); P.playing=false; keepAwake(false); updatePlayer(); return; }
+  if(P.cur && !P.failed && pageHas(S.page,P.cur) && P.audio.getAttribute("src")){ startPlay(); return; }
   if(S.current && pageHas(S.page,S.current)) return playFrom(S.current);
   const first = (PAGES[S.page]||[])[0]; if(first) playFrom(key(first[0],first[1]));
 }
+// lock-screen and headphone controls
+if("mediaSession" in navigator){
+  const ms = navigator.mediaSession, on = (a,f)=>{ try { ms.setActionHandler(a,f); } catch(e){} };
+  on("play", ()=>{ if(!P.playing) togglePlay(); });
+  on("pause", ()=>{ if(P.playing) togglePlay(); });
+  on("previoustrack", ()=>{ const k = P.cur && prevKey(P.cur); if(k) playFrom(k); });
+  on("nexttrack", ()=>{ const k = P.cur && nextKey(P.cur); if(k) playFrom(k); });
+}
+function updateMediaSession(rec){
+  if(!("mediaSession" in navigator) || !P.cur) return;
+  const [s,a] = P.cur.split(":").map(Number);
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: INDEX[s-1].transliteration+" "+s+":"+a, artist: rec.name, album: "Mushaf Reader",
+      artwork: [{src:"icons/icon-512.png",sizes:"512x512",type:"image/png"},{src:"icons/icon-192.png",sizes:"192x192",type:"image/png"}] });
+    navigator.mediaSession.playbackState = P.playing ? "playing" : "paused";
+  } catch(e){}
+}
+// optional: keep the screen on while reciting (Aa › Recitation)
+async function keepAwake(on){
+  try {
+    if(on && S.wake && !P.lock && navigator.wakeLock){ P.lock = await navigator.wakeLock.request("screen"); P.lock.addEventListener("release", ()=>{ P.lock = null; }); }
+    if(!on && P.lock){ const l = P.lock; P.lock = null; await l.release(); }
+  } catch(e){ P.lock = null; }
+}
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible" && P.playing) keepAwake(true); });
 function markPlaying(){
   document.querySelectorAll(".playing").forEach(e=>e.classList.remove("playing"));
   if(!P.cur) return;
@@ -529,8 +646,9 @@ function updatePlayer(){
   if(P.cur){
     const [s,a] = P.cur.split(":").map(Number);
     $("pTitle").textContent = INDEX[s-1].transliteration+" "+s+":"+a+" · "+rec.name;
-    if(P.failed){ sub.append("Playback is blocked here. "); const l = el("a",{href:audioUrl(P.cur),target:"_blank",rel:"noopener"},"Open this ayah's audio"); sub.append(l); }
-    else sub.append(P.playing ? "Playing, continues ayah by ayah" : "Paused");
+    if(P.failed){ sub.append("Playback is blocked here. "); const l = el("a",{href:audioUrl(P.cur),target:"_blank",rel:"noopener"},P.mode==="surah"?"Open this surah's audio":"Open this ayah's audio"); sub.append(l); }
+    else sub.append(!P.playing ? "Paused" : P.mode==="surah" ? "Playing · keeps going with the screen locked" : "Playing ayah by ayah");
+    updateMediaSession(rec);
   } else { $("pTitle").textContent = rec.name; sub.append("Tap play to recite from the top of this page"); }
   markPlaying();
 }
@@ -595,6 +713,16 @@ function choice(label, id, opts, value, onPick, note){
 }
 function settingsSheet(){
   const nodes = [el("h3",{},"Reading settings")];
+  const fp = el("div",{class:"field"}); fp.append(el("span",{class:"lbl"},"Page colour"));
+  const ps = el("div",{class:"paperseg",id:"paperSeg"});
+  for(const x of PAPERS){
+    const b = el("button",{"aria-pressed":String(S.paper===x.id),"data-v":x.id});
+    const pv = el("span",{class:"pv",style:"background:"+x.bg+";color:"+x.fg},"Aa");
+    b.append(pv, el("span",{}, x.name));
+    b.onclick = ()=>{ S.paper = x.id; save(); applyStyle(); settingsSheet(); };
+    ps.append(b);
+  }
+  fp.append(ps); nodes.push(fp);
   nodes.push(choice("Layout","layoutSeg",[
       {v:"page",name:"Mushaf page",cap:"Like the printed book"},
       {v:"side",name:"Side by side",cap:"Translation left, Arabic right"}],
@@ -684,8 +812,18 @@ function reciterField(){
   const f = el("div",{class:"field"}); f.append(el("label",{class:"lbl",for:"recSel"},"Reciter"));
   const rs = el("select",{id:"recSel"});
   for(const r of RECITERS){ const o=el("option",{value:r.id},r.name); if(S.reciter===r.id) o.selected=true; rs.append(o); }
-  rs.onchange = ()=>{ S.reciter=rs.value; save(); const was=P.playing, cur=P.cur; P.audio.pause(); P.playing=false; if(was&&cur) playFrom(cur); else { P.audio.removeAttribute("src"); updatePlayer(); } toast("Reciter: "+RECITERS.find(x=>x.id===S.reciter).name); };
-  f.append(rs); return f;
+  rs.onchange = async ()=>{
+    S.reciter=rs.value; save();
+    const was=P.playing, cur=P.cur;
+    P.audio.pause(); P.playing=false; P.surah=null; P.timings=null; P.timingsFor=null;
+    try { P.timings = await loadTimings(S.reciter); P.timingsFor = S.reciter; } catch(e){}
+    if(was&&cur) playFrom(cur); else { P.audio.removeAttribute("src"); updatePlayer(); }
+    toast("Reciter: "+RECITERS.find(x=>x.id===S.reciter).name);
+  };
+  const wl = el("label",{class:"check"}); const wc = el("input",{type:"checkbox",id:"wakeChk"}); wc.checked = S.wake;
+  wc.onchange = ()=>{ S.wake = wc.checked; save(); keepAwake(P.playing && S.wake); };
+  wl.append(wc, "Keep the screen on while reciting");
+  f.append(rs, wl); return f;
 }
 
 function marksSheet(){
@@ -861,7 +999,7 @@ function start(){
       catch(e){ showError("The IndoPak Mushaf didn't load.", e, start); return; }
     }
     S.page = Math.max(1, Math.min(COUNT, S.page));
-    READY = true; fillJumps(); renderPage();
+    READY = true; fillJumps(); renderPage(); useTimings();
   }).catch(e=>{ PAGES={}; AYAH_PAGE={}; JUZ_START={}; PAGE_JUZ={}; showError("The Mushaf page layout didn't load.", e, start); });
 }
 start();

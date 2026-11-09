@@ -870,6 +870,202 @@ test("IndoPak: reopens offline after it has been read once", () => withPage({ sw
   assert.ok(await page.evaluate(() => document.fonts.check('40px "IP Normal"', "")));
 }));
 
+/* ---------- recitation: one recording per surah, following the ayat ---------- */
+const TIM = id => JSON.parse(readFileSync(new URL("../data/timings/" + id + ".json", import.meta.url), "utf8"));
+const AFASY = TIM("Alafasy_128kbps");
+const startOf = (T, s, a) => T.ayat[s].find(r => r.length === 3 && r[0] === a)[1] / 1000;
+const SURAH = { timings: "ok", audio: "ok" };
+const playingKey = page => page.$eval("#page .playing", e => e.dataset.k).catch(() => null);
+const audioState = page => page.evaluate(() => ({ src: mushafAudio.src, paused: mushafAudio.paused, t: mushafAudio.currentTime }));
+// wait until the recording has loaded and is playing, then jump within it
+const moveTo = async (page, sec) => {
+  await page.waitForFunction(() => mushafAudio.readyState >= 2 && !mushafAudio.paused, null, { timeout: 8000 });
+  await page.evaluate(sec => { mushafAudio.currentTime = sec; }, sec);
+};
+const playFromSheet = async (page, sel) => { await page.locator(sel).first().click(); await page.locator("#sheet button", { hasText: "Play from here" }).click(); };
+
+test("Recitation plays the whole surah as one recording (keeps going with the screen locked)", () => withPage(SURAH, async ({ page, log }) => {
+  await page.goto(PAGE_URL + "#p1");
+  await page.waitForSelector(READY, { timeout: 15000 });
+  const req = page.waitForRequest(AFASY.audio["1"]);
+  await page.click("#playBtn");
+  await req;
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  await page.waitForFunction(() => /screen locked/.test(document.getElementById("pSub").textContent));
+  assert.ok(!log.requests.some(u => u.includes("everyayah.com")), "no per-ayah files");
+}));
+
+test("Recitation follows the ayat inside the recording without changing files", () => withPage(SURAH, async ({ page }) => {
+  await page.goto(PAGE_URL + "#p1");
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#playBtn");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  const before = await audioState(page);
+  for (const a of [4, 6, 2]) {
+    await moveTo(page, startOf(AFASY, 1, a) + 0.3);
+    await page.waitForSelector('#page .playing[data-k="1:' + a + '"]', { timeout: 5000 });
+  }
+  const after = await audioState(page);
+  assert.equal(after.src, before.src, "same recording throughout");
+  assert.equal(after.paused, false);
+  assert.match(await page.locator("#pTitle").textContent(), /1:2/);
+  assert.match(await page.evaluate(() => navigator.mediaSession.metadata && navigator.mediaSession.metadata.title), /1:2/, "lock screen shows the ayah");
+}));
+
+test("Play from here starts at that ayah's time in the recording", () => withPage(SURAH, async ({ page }) => {
+  await page.goto(PAGE_URL + "#p1");
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await playFromSheet(page, '.ayah[data-k="1:5"]');
+  await page.waitForSelector('#page .playing[data-k="1:5"]');
+  await page.waitForFunction(t => Math.abs(mushafAudio.currentTime - t) < 0.6 && !mushafAudio.paused, startOf(AFASY, 1, 5));
+}));
+
+test("Recitation turns the IndoPak page mid-surah while the same recording keeps playing", () => withPage(SURAH, async ({ page }) => {
+  // an IndoPak page break inside one surah, early enough in the recording for the stand-in audio
+  let found = null;
+  for (let p = 2; p < 610 && !found; p++) {
+    const last = ipWordsOn(p).at(-1)[0].split(":").map(Number), next = ipWordsOn(p + 1)[0][0].split(":").map(Number);
+    if (last[0] === next[0] && startOf(AFASY, next[0], next[1]) < 1700 && last[0] > 2) found = { p, k1: last[0] + ":" + last[1], k2: next[0] + ":" + next[1], s: next[0], a: next[1] };
+  }
+  assert.ok(found, "page break inside a surah");
+  await page.goto(PAGE_URL + "#i" + found.p);
+  await page.waitForSelector('.ip .ayah[data-k="' + found.k1 + '"]', { timeout: 20000 });
+  await playFromSheet(page, '.ip .ayah[data-k="' + found.k1 + '"]');
+  await page.waitForSelector('#page .playing[data-k="' + found.k1 + '"]');
+  const src = (await audioState(page)).src;
+  await moveTo(page, startOf(AFASY, found.s, found.a) + 0.3);
+  await page.waitForSelector('#page .playing[data-k="' + found.k2 + '"]', { timeout: 8000 });
+  assert.equal(await page.locator(".folio").textContent(), String(found.p + 1).replace(/\d/g, d => "٠١٢٣٤٥٦٧٨٩"[d]));
+  const st = await audioState(page);
+  assert.equal(st.src, src); assert.equal(st.paused, false);
+}));
+
+test("At the end of a surah, recitation carries on with the next surah's recording", () => withPage(SURAH, async ({ page }) => {
+  await page.goto(PAGE_URL + "#p1");
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#playBtn");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  const req = page.waitForRequest(AFASY.audio["2"]);
+  await page.evaluate(() => mushafAudio.dispatchEvent(new Event("ended")));
+  await req;
+  await page.waitForSelector('#page .playing[data-k="2:1"]', { timeout: 8000 });
+}));
+
+test("Where a reciter repeats an ayah, the repeated ayah is marked again", () => withPage(SURAH, async ({ page }) => {
+  let pick = null;
+  for (const id of ["Alafasy_128kbps", "Husary_64kbps", "Minshawy_Murattal_128kbps", "Abdul_Basit_Murattal_64kbps", "Abdurrahmaan_As-Sudais_192kbps", "Saood_ash-Shuraym_128kbps", "Abu_Bakr_Ash-Shaatree_128kbps", "Hani_Rifai_192kbps"]) {
+    const T = TIM(id);
+    for (const s in T.ayat) { const rep = T.ayat[s].find(r => r.length === 4 && r[2] < 1700000 && r[0] > 1); if (rep && !pick) pick = { id, s: +s, rep }; }
+  }
+  if (!pick) return; // no repeats early enough in any recording to test with the stand-in audio
+  await page.goto(PAGE_URL + "#p1");
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#openSettings"); await page.locator("#recSel").selectOption(pick.id); await page.keyboard.press("Escape");
+  await page.locator("#surahJump").selectOption(String(pick.s));
+  await page.waitForSelector('#page [data-k="' + pick.s + ':1"]', { timeout: 15000 });
+  await playFromSheet(page, '#page [data-k="' + pick.s + ':1"]');
+  await page.waitForSelector('#page .playing[data-k="' + pick.s + ':1"]');
+  await moveTo(page, (pick.rep[1] + pick.rep[2]) / 2000);
+  await page.waitForSelector('#page .playing[data-k="' + pick.s + ":" + pick.rep[0] + '"]', { timeout: 8000 });
+}));
+
+test("If the surah recording can't load, recitation falls back to one file per ayah", () => withPage({ timings: "ok", audio: "ok", surahAudio: "404" }, async ({ page }) => {
+  await page.goto(PAGE_URL + "#p1");
+  await page.waitForSelector(READY, { timeout: 15000 });
+  const req = page.waitForRequest("https://everyayah.com/data/Alafasy_128kbps/001001.mp3");
+  await page.click("#playBtn");
+  await req;
+  await page.waitForFunction(() => /ayah by ayah/.test(document.getElementById("pSub").textContent));
+}));
+
+test("Without timing data, recitation still works ayah by ayah", () => withPage({ timings: "404", audio: "ok" }, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  const req = page.waitForRequest("https://everyayah.com/data/Alafasy_128kbps/001001.mp3");
+  await page.click("#playBtn");
+  await req;
+}));
+
+test("Changing reciter while reciting continues from the same ayah in the new recording", () => withPage(SURAH, async ({ page }) => {
+  await page.goto(PAGE_URL + "#p1");
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await playFromSheet(page, '.ayah[data-k="1:3"]');
+  await page.waitForSelector('#page .playing[data-k="1:3"]');
+  const HUS = TIM("Husary_64kbps");
+  const req = page.waitForRequest(HUS.audio["1"]);
+  await page.click("#reciterBtn"); await page.locator("#recSel").selectOption("Husary_64kbps"); await page.keyboard.press("Escape");
+  await req;
+  await page.waitForFunction(t => Math.abs(mushafAudio.currentTime - t) < 0.6 && !mushafAudio.paused, startOf(HUS, 1, 3));
+  assert.match(await page.locator("#pTitle").textContent(), /1:3 · Mahmoud Khalil Al-Husary/);
+}));
+
+test("Every reciter's timing file covers all 114 surahs with its own recording", () => {
+  for (const id of ["Alafasy_128kbps", "Husary_64kbps", "Minshawy_Murattal_128kbps", "Abdul_Basit_Murattal_64kbps", "Abdurrahmaan_As-Sudais_192kbps", "Saood_ash-Shuraym_128kbps", "Abu_Bakr_Ash-Shaatree_128kbps", "Hani_Rifai_192kbps"]) {
+    const T = TIM(id);
+    assert.equal(Object.keys(T.audio).length, 114, id);
+    assert.equal(new Set(Object.values(T.audio)).size, 114, id);
+    let n = 0;
+    for (let s = 1; s <= 114; s++) { const can = T.ayat[s].filter(r => r.length === 3); n += can.length; can.forEach((r, i) => { if (i) assert.ok(r[1] >= can[i - 1][1], id + " " + s); }); }
+    assert.equal(n + T.missing.length, 6236, id);
+  }
+});
+
+test("Settings: 'Keep the screen on while reciting' is remembered", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#openSettings");
+  assert.equal(await page.locator("#wakeChk").isChecked(), false);
+  await page.locator("#wakeChk").check();
+  await page.reload(); await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#openSettings");
+  assert.equal(await page.locator("#wakeChk").isChecked(), true);
+}));
+
+/* ---------- page colours ---------- */
+const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const lum = c => { const [r, g, b] = c.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const parseRgb = s => s.match(/\d+/g).slice(0, 3).map(Number);
+const PAPER_EXPECT = { white: ["#e8ecea", "#ffffff"], cream: ["#e3e8e2", "#fbf8ee"], sepia: ["#e4d6ba", "#f6edd8"], mint: ["#d9e7df", "#f0f8f3"], night: ["#0c1311", "#161f1c"], black: ["#000000", "#050505"] };
+
+test("Page colour: each choice colours the background and page, keeps text easy to read, and is remembered", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i42");
+  await page.waitForSelector(".frame.ip .ayah", { timeout: 20000 });
+  for (const [id, [ground, paper]] of Object.entries(PAPER_EXPECT)) {
+    await page.click("#openSettings"); await page.locator('#paperSeg button[data-v="' + id + '"]').click(); await page.keyboard.press("Escape");
+    const c = await page.evaluate(() => ({ body: getComputedStyle(document.body).backgroundColor, page: getComputedStyle(document.querySelector(".page")).backgroundColor,
+      ink: getComputedStyle(document.querySelector(".ip .ayah")).color, meta: (document.getElementById("paperColor") || {}).content }));
+    assert.deepEqual(parseRgb(c.body), rgb(ground), id + " background");
+    assert.deepEqual(parseRgb(c.page), rgb(paper), id + " page");
+    assert.ok(contrast(parseRgb(c.ink), rgb(paper)) >= 7, id + " text contrast " + contrast(parseRgb(c.ink), rgb(paper)).toFixed(1));
+    assert.equal(c.meta, ground, id + " status bar colour");
+  }
+  await page.reload(); await page.waitForSelector(".frame.ip .ayah", { timeout: 20000 });
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.paper), "black");
+}));
+
+test("Page colour: Auto follows the phone's dark mode; a chosen colour stays when the phone is dark", () => withPage({}, async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForSelector(READY, { timeout: 15000 });
+  const pageBg = () => page.evaluate(() => getComputedStyle(document.querySelector(".page")).backgroundColor);
+  assert.deepEqual(parseRgb(await pageBg()), rgb("#161f1c"), "auto + dark phone = night");
+  await page.click("#openSettings"); await page.locator('#paperSeg button[data-v="sepia"]').click(); await page.keyboard.press("Escape");
+  assert.deepEqual(parseRgb(await pageBg()), rgb("#f6edd8"), "sepia stays sepia");
+  await page.click("#openSettings"); await page.locator('#paperSeg button[data-v="auto"]').click(); await page.keyboard.press("Escape");
+  assert.deepEqual(parseRgb(await pageBg()), rgb("#161f1c"));
+  assert.equal(await page.locator("#paperColor").count(), 0);
+}));
+
+test("Page colour: highlights, your place and side-by-side rows are visible on every colour", () => withPage({ tap: "default" }, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#hlBtn"); await page.click('.ayah[data-k="1:2"]'); await page.click("#hlDone");
+  await page.click('.ayah[data-k="1:4"]');
+  for (const id of Object.keys(PAPER_EXPECT)) {
+    await page.click("#openSettings"); await page.locator('#paperSeg button[data-v="' + id + '"]').click(); await page.keyboard.press("Escape");
+    const c = await page.evaluate(() => ({ paper: getComputedStyle(document.querySelector(".page")).backgroundColor,
+      hl: getComputedStyle(document.querySelector('.ayah[data-k="1:2"]')).backgroundColor, cur: getComputedStyle(document.querySelector('.ayah[data-k="1:4"]')).backgroundColor }));
+    assert.notEqual(c.hl, "rgba(0, 0, 0, 0)", id + " highlight"); assert.notEqual(c.cur, "rgba(0, 0, 0, 0)", id + " your place");
+  }
+}));
+
 /* ---------- installable app ---------- */
 test("web app manifest is valid and its icons load at the declared sizes", () => withPage({}, async ({ page }) => {
   await page.waitForSelector(READY, { timeout: 15000 });
