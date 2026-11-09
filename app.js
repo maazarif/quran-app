@@ -78,17 +78,61 @@ const MEDINAN = new Set([2,3,4,5,8,9,13,22,24,33,47,48,49,55,57,58,59,60,61,62,6
 const QM_IIFES = ["https://cdn.jsdelivr.net/npm/quran-meta@6.0.17/dist/index.iife.js",
                   "https://cdn.jsdelivr.net/npm/quran-meta@6.0.17/dist/quran-meta.iife.js"];
 const loadScript = src => new Promise((res,rej)=>{ const s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=()=>rej(new Error("could not load "+src)); document.head.append(s); });
-const usable = o => o && (typeof o.getAyahMeta==="function" || typeof o.findPage==="function");
-function pickApi(o){ for(const c of [o, o&&o.default, o&&o.quran, o&&o.hafs, o&&o.default&&o.default.quran]) if(usable(c)) return c; return null; }
+const QM_HAFS = "https://cdn.jsdelivr.net/npm/quran-meta@6.0.17/hafs/+esm";
 const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error(what+" timed out")), ms))]);
+const isFn = f => typeof f === "function";
+
+/* The layout library has been published in several shapes: plain functions, functions that need the
+   riwayah's data passed in, a ready-made `quran` object, or a createHafs() factory. Build every way of
+   calling it that the loaded module offers, and keep the first one that gives the known Madani pages. */
+function layoutCandidates(mod, label){
+  const out = [];
+  const add = (name, obj, extra=[]) => {
+    if(!obj || (!isFn(obj.getAyahMeta) && !isFn(obj.findPage))) return;
+    out.push({ name: label+" "+name,
+      meta: isFn(obj.getAyahMeta) ? id => obj.getAyahMeta(id, ...extra) : null,
+      page: isFn(obj.findPage) ? (s,a) => obj.findPage(s, a, ...extra) : null,
+      juz:  isFn(obj.findJuz)  ? (s,a) => obj.findJuz(s, a, ...extra)  : null });
+  };
+  for(const root of [mod, mod && mod.default]){
+    if(!root || typeof root !== "object" && !isFn(root)) continue;
+    if(isFn(root.getListsOfRiwaya)){ try { add("with Hafs data", root, [root.getListsOfRiwaya("Hafs")]); } catch(e){} }
+    for(const k of Object.keys(root)){
+      const v = root[k];
+      if(/^create(Hafs)?$/i.test(k) && isFn(v)){ try { const inst = k==="create" ? v("Hafs") : v(); add(k+"()", inst); } catch(e){} }
+      else if(/hafs/i.test(k) && v && typeof v === "object"){ add(k, v); add("with "+k, root, [v]); }
+    }
+    add("quran object", root.quran);
+    add("functions", root);
+  }
+  return out;
+}
+const pageOf = (c, s, a, id) => { const m = c.meta && c.meta(id); if(m && m.surah===s && m.ayah===a && m.page) return m.page; return c.page ? c.page(s,a) : undefined; };
+function verifyLayout(c){
+  // known pages of the 604-page Madani Mushaf: 1:1 → 1, 2:1 → 2, 2:255 → 42, 114:1 → 604
+  const checks = [[1,1,1,1],[2,1,8,2],[2,255,262,42],[114,1,6231,604]];
+  for(const [s,a,id,want] of checks){ const got = pageOf(c,s,a,id); if(got!==want) throw new Error(s+":"+a+" gave page "+got+", expected "+want); }
+  return c;
+}
 
 async function getLayoutApi(){
   const notes = [];
-  try { const api = pickApi(await withTimeout(import(QM), 15000, "layout module")); if(api) return api; notes.push("module loaded without page functions"); }
-  catch(e){ notes.push("module: "+e.message); }
+  const tryModule = (mod, label) => {
+    const cands = layoutCandidates(mod, label);
+    if(!cands.length){ notes.push(label+": no page functions"); return null; }
+    for(const c of cands){ try { return verifyLayout(c); } catch(e){ notes.push(c.name+": "+e.message); } }
+    return null;
+  };
+  for(const [url,label] of [[QM_HAFS,"hafs module"],[QM,"module"]]){
+    try { const r = tryModule(await withTimeout(import(url), 15000, label), label); if(r) return r; }
+    catch(e){ notes.push(label+": "+e.message); }
+  }
   for(const src of QM_IIFES){
-    try { await withTimeout(loadScript(src), 15000, "layout script"); const api = pickApi(window.quranMeta); if(api) return api; notes.push(src.split("/").pop()+" loaded but quranMeta was not found"); }
-    catch(e){ notes.push(e.message); }
+    const label = src.split("/").pop();
+    try { await withTimeout(loadScript(src), 15000, "layout script"); }
+    catch(e){ notes.push(e.message); continue; }
+    if(!window.quranMeta){ notes.push(label+" loaded but quranMeta was not found"); continue; }
+    const r = tryModule(window.quranMeta, label); if(r) return r;
   }
   throw new Error("Page layout data: "+notes.join("; "));
 }
@@ -102,15 +146,14 @@ async function loadMeta(){
   }).catch(e=>LOAD_NOTES.push("surah index: "+e.message));
 
   const qm = await getLayoutApi();
-  const call = (fn, ...a) => (typeof qm[fn]==="function") ? qm[fn](...a) : undefined;
   let id = 0;
   for(let s=1; s<=114; s++) for(let a=1; a<=SURAH_N[s-1]; a++){
     id++;
     let p, j;
-    const m = call("getAyahMeta", id);
+    const m = qm.meta && qm.meta(id);
     if(m && m.surah===s && m.ayah===a){ p = m.page; j = m.juz; }
-    if(!p) p = call("findPage", s, a);
-    if(!j) j = call("findJuz", s, a);
+    if(!p && qm.page) p = qm.page(s, a);
+    if(!j && qm.juz) j = qm.juz(s, a);
     if(!(p>=1 && p<=604)) throw new Error("Page layout data: no page for "+s+":"+a);
     (PAGES[p] ||= []).push([s,a]); AYAH_PAGE[key(s,a)] = p;
     if(j){ if(!(j in JUZ_START)) JUZ_START[j]=p; if(!(p in PAGE_JUZ)) PAGE_JUZ[p]=j; }
@@ -374,7 +417,8 @@ let sx=null,sy=null;
 $("page").addEventListener("touchstart",e=>{sx=e.touches[0].clientX;sy=e.touches[0].clientY},{passive:true});
 $("page").addEventListener("touchend",e=>{ if(sx===null) return; const dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy; sx=null;
   if(Math.abs(dx)>60 && Math.abs(dx)>Math.abs(dy)*1.5) go(S.page+(dx>0?1:-1)); },{passive:true}); /* RTL book: drag right = next page */
-window.addEventListener("hashchange",()=>{ const m=/^#p(\d+)$/.exec(location.hash); if(m && +m[1]!==S.page) go(+m[1]); });
+// read the page from the event's own URL: the app may already have rewritten location.hash by the time this runs
+window.addEventListener("hashchange",e=>{ const m=/#p(\d+)$/.exec(e.newURL || location.hash); if(m && +m[1]!==S.page) go(+m[1]); });
 
 /* ---------- start ---------- */
 applyStyle(); updateCount();

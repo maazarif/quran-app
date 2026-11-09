@@ -24,12 +24,24 @@ export const COUNTS = [7,286,200,176,120,165,206,75,129,109,123,111,43,52,99,128
 const layoutSrc = `
 const COUNTS=${JSON.stringify(COUNTS)};
 const IDS=[];for(let s=1;s<=114;s++)for(let a=1;a<=COUNTS[s-1];a++)IDS.push([s,a]);
-function pageOfId(id){return id<=7?1:2+Math.floor((id-8)*603/6229);}
-function getAyahMeta(id){const [surah,ayah]=IDS[id-1];const page=pageOfId(id);return {surah,ayah,page,juz:Math.min(30,1+Math.floor((page-1)/20))};}
+function pageOfId(id){return id<=7?1:id<=262?2+Math.floor((id-8)*41/255):42+Math.floor((id-262)*562/5969);} // 2:1→2, 2:255→42, 114:1→604 as in the Madani Mushaf
+function _meta(id){const [surah,ayah]=IDS[id-1];const page=pageOfId(id);return {surah,ayah,page,juz:Math.min(30,1+Math.floor((page-1)/20))};}
 function idOf(s,a){let id=0;for(let i=1;i<s;i++)id+=COUNTS[i-1];return id+a;}
-function findPage(s,a){return getAyahMeta(idOf(s,a)).page;}
-function findJuz(s,a){return getAyahMeta(idOf(s,a)).juz;}
-const meta={numAyahs:6236};`;
+function _page(s,a){return _meta(idOf(s,a)).page;}
+function _juz(s,a){return _meta(idOf(s,a)).juz;}
+const meta={numAyahs:6236};
+const HAFS_LISTS={meta:{numAyahs:6236}};
+function need(l){ return l.meta; } // throws without riwayah data, like the real library did on iPhone`;
+
+// Module shapes the layout library may have. "needsLists" mirrors the crash seen on a real iPhone.
+const esmShapes = {
+  plain: `export const getAyahMeta=_meta, findPage=_page, findJuz=_juz; export {meta};`,
+  needsLists: `export function getListsOfRiwaya(n){ if(n!=="Hafs") throw new Error("unknown riwaya"); return HAFS_LISTS; }
+export const getAyahMeta=(id,l)=>{need(l);return _meta(id)}, findPage=(s,a,l)=>{need(l);return _page(s,a)}, findJuz=(s,a,l)=>{need(l);return _juz(s,a)}; export {meta};`,
+  quranObject: `export const quran={getAyahMeta:_meta,findPage:_page,findJuz:_juz}; export const findPage=(s,a,l)=>{need(l);return _page(s,a)};`,
+  createHafs: `export function createHafs(){ return {getAyahMeta:_meta,findPage:_page,findJuz:_juz}; } export const getAyahMeta=(id,l)=>{need(l);return _meta(id)};`,
+  wrongLayout: `export const getAyahMeta=id=>({..._meta(id),page:Math.min(604,_meta(id).page+1)}); export const findPage=()=>99;`
+};
 
 // Arabic test string with harakat and Quranic annotation marks (U+0670, U+06DF, U+06E5),
 // used to prove the app shows text byte-for-byte without normalising it.
@@ -51,7 +63,7 @@ const data = (obj, esm) => esm ? js("export default " + JSON.stringify(obj)) : {
 
 /** opts: { iife: "ok"|"404"|"noglobal", iifeFile, esm: "ok"|"404", text: "ok"|"404", index: "ok"|"404", audio: "ok"|"404", sw: false|true, userAgent } */
 export async function launch(opts = {}, viewport = {width: 1100, height: 900}) {
-  const o = { iife:"ok", esm:"ok", text:"ok", index:"ok", audio:"404", sw:false, ...opts };
+  const o = { iife:"ok", esm:"ok", esmShape:"needsLists", hafsPath:"404", text:"ok", index:"ok", audio:"404", sw:false, ...opts };
   const browser = await chromium.launch({ executablePath: existsSync("/usr/bin/google-chrome") ? "/usr/bin/google-chrome" : undefined,
     args: ["--autoplay-policy=no-user-gesture-required"] });
   const context = await browser.newContext({ viewport, serviceWorkers: o.sw ? "allow" : "block", ...(o.userAgent ? {userAgent:o.userAgent} : {}) });
@@ -71,11 +83,15 @@ export async function launch(opts = {}, viewport = {width: 1100, height: 900}) {
       const file = url.split("/").pop();
       if (o.iife === "404" || (o.iifeFile && o.iifeFile !== file)) return route.fulfill({ status: 404, body: "not found" });
       if (o.iife === "noglobal") return route.fulfill(js("/* no global */"));
-      return route.fulfill(js(layoutSrc + "\nwindow.quranMeta={getAyahMeta,findPage,findJuz,meta};"));
+      return route.fulfill(js("(()=>{" + layoutSrc + "\nwindow.quranMeta={getAyahMeta:_meta,findPage:_page,findJuz:_juz,meta};})();"));
+    }
+    if (url.includes("quran-meta@6.0.17/hafs/+esm")) {
+      if (o.hafsPath !== "ok") return route.fulfill({ status: 404, body: "not found" });
+      return route.fulfill(js(layoutSrc + "\n" + esmShapes.plain));
     }
     if (url.includes("quran-meta@6.0.17/+esm")) {
       if (o.esm === "404") return route.fulfill({ status: 404, body: "not found" });
-      return route.fulfill(js(layoutSrc + "\nexport {getAyahMeta,findPage,findJuz,meta};"));
+      return route.fulfill(js(layoutSrc + "\n" + esmShapes[o.esmShape]));
     }
     const m = url.match(/quran-json@3\.1\.2\/dist\/chapters\/(?:([a-z]{2})\/)?(\d+|index)\.json(\/\+esm)?$/);
     if (m) {

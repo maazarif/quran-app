@@ -25,6 +25,30 @@ test("loads page 1 via the layout module and renders Al-Fatihah", () => withPage
   assert.deepEqual(log.errors, []);
 }));
 
+test("layout library whose functions need the Hafs data passed in (the iPhone crash)", () => withPage({ esmShape: "needsLists" }, async ({ page, log }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  assert.equal(await page.locator(".ayah").count(), 7);
+  assert.ok(!log.requests.some(u => u.endsWith(".iife.js")), "should not need the fallback script");
+}));
+
+for (const shape of ["plain", "quranObject", "createHafs"]) {
+  test("layout library shaped as " + shape + " loads all pages", () => withPage({ esmShape: shape }, async ({ page }) => {
+    await page.goto(PAGE_URL + "#p604");
+    await page.waitForSelector('.ayah[data-k="114:6"]', { timeout: 15000 });
+  }));
+}
+
+test("layout from the hafs/ entry point is used first when it exists", () => withPage({ hafsPath: "ok", esm: "404" }, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  assert.equal(await page.locator(".ayah").count(), 7);
+}));
+
+test("layout data that gives the wrong Madani pages is rejected, never shown", () => withPage({ esmShape: "wrongLayout", iife: "404" }, async ({ page }) => {
+  await page.waitForSelector(".state.err", { timeout: 20000 });
+  assert.match(await page.locator(".state.err code").textContent(), /2:255 gave page 43, expected 42|1:1 gave page|gave page/);
+  assert.equal(await page.locator(".ayah").count(), 0);
+}));
+
 test("finds the layout script under either v6 or v7 file name", async () => {
   for (const iifeFile of ["index.iife.js", "quran-meta.iife.js"]) await withPage({ iifeFile, esm: "404" }, async ({ page }) => {
     await page.waitForSelector(READY, { timeout: 15000 });
@@ -46,7 +70,7 @@ test("reports a script that loads without the expected global", () => withPage({
 test("shows a specific error with a retry button when layout data can't load", () => withPage({ iife: "404", esm: "404" }, async ({ page }) => {
   await page.waitForSelector(".state.err", { timeout: 20000 });
   assert.match(await page.locator(".state.err b").textContent(), /page layout didn't load/);
-  assert.match(await page.locator(".state.err code").textContent(), /Page layout data: module: .*; could not load .*index\.iife\.js; could not load .*quran-meta\.iife\.js/);
+  assert.match(await page.locator(".state.err code").textContent(), /Page layout data: hafs module: .*; module: .*; could not load .*index\.iife\.js; could not load .*quran-meta\.iife\.js/);
   assert.equal(await page.locator(".state.err button", { hasText: "Try again" }).count(), 1);
 }));
 
