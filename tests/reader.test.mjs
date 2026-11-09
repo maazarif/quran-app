@@ -1019,6 +1019,109 @@ test("Settings: 'Keep the screen on while reciting' is remembered", () => withPa
   assert.equal(await page.locator("#wakeChk").isChecked(), true);
 }));
 
+/* ---------- uninterrupted playback (driving, workouts): what keeps an iPhone playing when locked ---------- */
+// record the audio element's events, and what the app asks of the lock screen and the audio session
+const SPY = () => {
+  window.__ev = []; window.__handlers = {}; window.__handlerLog = [];
+  navigator.audioSession = { type: "auto" };
+  if (navigator.mediaSession) { const orig = navigator.mediaSession.setActionHandler.bind(navigator.mediaSession);
+    navigator.mediaSession.setActionHandler = (a, f) => { window.__handlers[a] = f; window.__handlerLog.push(a + (f ? "" : ":null")); try { orig(a, f); } catch (e) {} }; }
+  const watch = () => { if (!window.mushafAudio) return setTimeout(watch, 20);
+    for (const e of ["ended", "pause", "play", "playing", "emptied"]) mushafAudio.addEventListener(e, () => __ev.push(e + "@" + mushafAudio.src.split("/").pop()));
+    // a src change cancels the queued "pause" event, so record the call itself
+    mushafAudio.pause = function () { __ev.push("pause()@" + this.src.split("/").pop()); return HTMLMediaElement.prototype.pause.call(this); }; };
+  watch();
+};
+const spyPage = async (page, url) => { await page.addInitScript(SPY); await page.goto(url); await page.reload(); await page.waitForSelector(READY, { timeout: 15000 }); };
+const lastEnd = (T, s) => Math.max(...T.ayat[s].map(r => r[2])) / 1000;
+
+test("Non-stop: one surah runs into the next without the audio ever reaching an end", () => withPage(SURAH, async ({ page }) => {
+  await spyPage(page, PAGE_URL + "#p1");
+  assert.equal(await page.evaluate(() => mushafAudio.loop), true, "set to loop, so it never ends on its own");
+  await page.click("#playBtn");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  await moveTo(page, lastEnd(AFASY, 1) - 1.5);
+  await page.waitForSelector('#page .playing[data-k="2:1"]', { timeout: 10000 });
+  await page.waitForFunction(() => !mushafAudio.paused);
+  const ev = await page.evaluate(() => __ev);
+  assert.ok(!ev.some(e => e.startsWith("ended")), "no natural end: " + ev.join(","));
+  const iPause = ev.findIndex(e => e === "pause()@001.mp3"), iSwitch = ev.findIndex(e => e === "emptied@002.mp3"), iPlay2 = ev.findIndex(e => e === "play@002.mp3");
+  assert.ok(iPause >= 0 && iSwitch > iPause && iPlay2 > iSwitch, "paused, switched, then played the next surah: " + ev.join(","));
+}));
+
+test("Non-stop: ayah-by-ayah playback also never reaches an end", () => withPage({ timings: "404", audio: "ok" }, async ({ page }) => {
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click('.ayah[data-k="1:6"]'); await page.locator("#sheet button", { hasText: "Play from here" }).click();
+  await page.waitForSelector('#page .playing[data-k="2:1"]', { timeout: 15000 });
+  const ev = await page.evaluate(() => __ev);
+  assert.ok(!ev.some(e => e.startsWith("ended")), ev.join(","));
+}));
+
+test("Non-stop: if a recording does run to its end, the loop's jump back is treated as the end", () => withPage(SURAH, async ({ page }) => {
+  await page.goto(PAGE_URL + "#p1");
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#playBtn");
+  await moveTo(page, 20);
+  await page.waitForTimeout(1200);
+  const req = page.waitForRequest(AFASY.audio["2"]);
+  await page.evaluate(() => { mushafAudio.currentTime = 0.1; });   // what looping does at the end of a file
+  await req;
+  await page.waitForSelector('#page .playing[data-k="2:1"]', { timeout: 8000 });
+}));
+
+test("Non-stop: jumping back to an earlier ayah is not mistaken for the end of the surah", () => withPage(SURAH, async ({ page, log }) => {
+  await page.goto(PAGE_URL + "#p1");
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await playFromSheet(page, '.ayah[data-k="1:6"]');
+  await page.waitForFunction(() => mushafAudio.readyState >= 2 && mushafAudio.currentTime > 3);
+  await playFromSheet(page, '.ayah[data-k="1:1"]');
+  await page.waitForTimeout(1500);
+  assert.equal(await playingKey(page), "1:1");
+  assert.match((await audioState(page)).src, /001\.mp3$/);
+}));
+
+test("Non-stop: the next surah's recording is fetched ahead of time", () => withPage(SURAH, async ({ page }) => {
+  await page.goto(PAGE_URL + "#p1");
+  await page.waitForSelector(READY, { timeout: 15000 });
+  const req = page.waitForRequest(AFASY.audio["2"], { timeout: 8000 });
+  await page.click("#playBtn");
+  await req;
+  assert.match(await playingKey(page), /^1:/, "fetched while still reciting Al-Fatihah");
+}));
+
+test("After a surah: 'Repeat the surah' starts it again; 'Stop' stops", () => withPage(SURAH, async ({ page }) => {
+  await page.goto(PAGE_URL + "#p1");
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#reciterBtn"); await page.locator("#afterSel").selectOption("repeat"); await page.keyboard.press("Escape");
+  await page.click("#playBtn");
+  await moveTo(page, lastEnd(AFASY, 1) - 1);
+  await page.waitForFunction(() => mushafAudio.currentTime < 3 && !mushafAudio.paused, null, { timeout: 8000 });
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  assert.match((await audioState(page)).src, /001\.mp3$/);
+  await page.click("#reciterBtn"); await page.locator("#afterSel").selectOption("stop"); await page.keyboard.press("Escape");
+  await moveTo(page, lastEnd(AFASY, 1) - 1);
+  await page.waitForFunction(() => mushafAudio.paused, null, { timeout: 8000 });
+  assert.match(await page.locator("#pSub").textContent(), /Paused/);
+  await page.reload(); await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#reciterBtn");
+  assert.equal(await page.locator("#afterSel").inputValue(), "stop");
+}));
+
+test("Lock screen and car controls: set each time playback starts, previous/next ayah instead of 10-second skips", () => withPage(SURAH, async ({ page }) => {
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.evaluate(() => { __handlerLog.length = 0; });
+  await page.click("#playBtn");
+  await page.waitForFunction(() => __ev.includes("playing@001.mp3"));
+  const log = await page.evaluate(() => __handlerLog);
+  for (const a of ["play", "pause", "previoustrack", "nexttrack", "seekbackward:null", "seekforward:null"]) assert.ok(log.includes(a), a + " in " + log.join(","));
+  await page.evaluate(() => __handlers.nexttrack());
+  await page.waitForSelector('#page .playing[data-k="1:2"]');
+  await page.waitForFunction(t => Math.abs(mushafAudio.currentTime - t) < 0.6 && !mushafAudio.paused, startOf(AFASY, 1, 2));
+  await page.evaluate(() => __handlers.previoustrack());
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  assert.equal(await page.evaluate(() => navigator.audioSession.type), "playback", "plays as media, not muted by the silent switch");
+}));
+
 /* ---------- page colours ---------- */
 const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const lum = c => { const [r, g, b] = c.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };

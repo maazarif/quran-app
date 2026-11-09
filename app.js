@@ -49,13 +49,13 @@ const store = {
 const COLORS_OK = c => ["amber","green","blue","rose"].includes(c) ? c : "amber";
 const S = {
   page: store.get("page",1), script: store.get("script","amiriq"), size: store.get("size",1.75),
-  hlColor: COLORS_OK(store.get("hlColor","amber")), tapAction: store.get("tapAction","mark")==="menu" ? "menu" : "mark", current: store.get("current",null), wake: store.get("wake",false), paper: store.get("paper","auto"), layout: store.get("layout","page")==="side" ? "side" : "page", ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
+  hlColor: COLORS_OK(store.get("hlColor","amber")), tapAction: store.get("tapAction","mark")==="menu" ? "menu" : "mark", current: store.get("current",null), wake: store.get("wake",false), afterSurah: ["next","repeat","stop"].includes(store.get("afterSurah","next")) ? store.get("afterSurah","next") : "next", paper: store.get("paper","auto"), layout: store.get("layout","page")==="side" ? "side" : "page", ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
   bookmarks: store.get("bookmarks",[]), highlights: store.get("highlights",{}), sel:null
 };
 if(!SCRIPTS.some(x=>x.id===S.script)) S.script="amiriq";
 if(!TRANSLATIONS.some(x=>x.id===S.trans)) S.trans="en";
 if(!RECITERS.some(x=>x.id===S.reciter)) S.reciter="Alafasy_128kbps";
-const save = () => ["page","script","size","hlColor","tapAction","current","wake","paper","layout","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
+const save = () => ["page","script","size","hlColor","tapAction","current","wake","afterSurah","paper","layout","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
 
 /* ---------- data ---------- */
 // On its own site the app can download the JSON files directly (they are served with CORS).
@@ -551,18 +551,28 @@ function setCur(k){
   if(!pageHas(S.page,k)) go(AYAH_PAGE[k],true); else markPlaying();
   updatePlayer();
 }
+/* Uninterrupted playback on iPhone. When a web app's audio reaches its natural end, iOS closes the app's
+   audio session and, with the screen locked or another app open, won't let it start again. A pause or a
+   seek keeps the session open. So the recording is set to loop and never ends on its own: shortly before
+   the end the app pauses, switches to the next file and plays, all in one step; if a file does reach its
+   end, the loop jumps to the start and the app treats that jump as the end. */
+P.audio.loop = true;
+let lastT = 0, selfSeekAt = 0, advancedAt = 0;
 function startPlay(){
-  P.audio.play().then(()=>{ P.playing=true; P.failed=false; updatePlayer(); keepAwake(true); })
-    .catch(err=>{ if(err && err.name==="AbortError") return; fallbackOrFail(); });
+  if(navigator.audioSession){ try { navigator.audioSession.type = "playback"; } catch(e){} }   // media playback: not muted by the silent switch
+  P.audio.play().then(()=>{ P.playing=true; P.failed=false; P.switching=false; updatePlayer(); keepAwake(true); })
+    .catch(err=>{ if(err && err.name==="AbortError") return; P.switching=false; fallbackOrFail(); });
 }
 function fallbackOrFail(){
   if(P.mode==="surah" && P.cur){ P.mode = "ayah"; P.surah = null; playAyahFile(P.cur); return; }
   P.playing=false; P.failed=true; updatePlayer();
 }
+function setSrc(url){ lastT = 0; P.endAt = null; P.audio.src = url; }
 function playAyahFile(k){
-  P.mode = "ayah"; P.cur = k; P.failed = false; P.audio.src = ayahUrl(k);
+  P.mode = "ayah"; P.cur = k; P.failed = false; setSrc(ayahUrl(k));
   if(!pageHas(S.page,k)) go(AYAH_PAGE[k],true); else markPlaying();
   startPlay();
+  const n = nextKey(k); if(n) prefetch(ayahUrl(n));
 }
 function playFrom(k){
   P.failed = false;
@@ -573,47 +583,89 @@ function playFrom(k){
   if(!row){ const n = s<114 ? key(s+1,1) : null; if(n) return playFrom(n); return; }
   P.mode = "surah";
   const url = T.audio[s];
-  if(P.surah!==s || !P.audio.src || P.audio.src!==url){ P.audio.src = url; P.surah = s; P.rows = T.ayat[s]; }
+  if(P.surah!==s || !P.audio.src || P.audio.src!==url){ setSrc(url); P.surah = s; P.rows = T.ayat[s]; }
+  // where this surah's recitation ends: switch shortly after its last ayah, before the file runs out
+  P.lastEnd = Math.max(...T.ayat[s].map(r=>r[2]));
   const at = (row[0]===1 ? 0 : row[1]) / 1000;   // ayah 1 starts with the Bismillah before it
   P.cur = null; setCur(key(s,row[0]));
   seekTo(at);
   startPlay();
 }
 function seekTo(sec){
+  selfSeekAt = Date.now(); lastT = sec;
   if(P.audio.readyState >= 1){ try { P.audio.currentTime = sec; P.seek = null; return; } catch(e){} }
   P.seek = sec;
 }
-P.audio.addEventListener("loadedmetadata", ()=>{ if(P.seek!=null){ try { P.audio.currentTime = P.seek; } catch(e){} P.seek = null; } });
-// follow the recording: which ayah is being recited right now
+// what plays after the current surah or ayah (Aa › After a surah)
+function nextItem(){
+  if(P.mode==="surah"){
+    if(S.afterSurah==="repeat") return key(P.surah,1);
+    if(S.afterSurah==="stop") return null;
+    return P.surah<114 ? key(P.surah+1,1) : null;
+  }
+  return P.cur ? nextKey(P.cur) : null;
+}
+function advance(){
+  const now = Date.now(); if(now - advancedAt < 1500) return; advancedAt = now;
+  const n = nextItem();
+  P.switching = true;
+  P.audio.pause();                        // pausing keeps the audio session open
+  if(!n){ P.switching = false; P.playing = false; keepAwake(false); updatePlayer(); if(P.mode==="surah" && S.afterSurah==="stop") toast("Finished the surah"); return; }
+  if(P.mode==="surah") playFrom(n); else playAyahFile(n);
+}
+let pre = null;
+function prefetch(url){ // load the next file early so the switch is instant
+  if(pre && pre.dataset.url===url) return;
+  try { pre = new Audio(); pre.preload = "auto"; pre.muted = true; pre.dataset.url = url; pre.src = url; pre.load(); } catch(e){}
+}
+P.audio.addEventListener("loadedmetadata", ()=>{
+  if(P.seek!=null){ try { P.audio.currentTime = P.seek; } catch(e){} P.seek = null; }
+  if(P.mode==="surah" && P.lastEnd) P.endAt = Math.min(P.lastEnd + 700, P.audio.duration*1000 - 300);
+});
+// the loop jumped back to the start: the file reached its end
+P.audio.addEventListener("seeking", ()=>{
+  const t = P.audio.currentTime;
+  if(Date.now() - selfSeekAt > 800 && lastT > 3 && t < 1.5 && lastT - t > 2) advance();
+});
 P.audio.addEventListener("timeupdate", ()=>{
+  const t = P.audio.currentTime;
+  if(P.seek==null && !P.switching){
+    if(P.mode==="surah" && P.endAt && t*1000 >= P.endAt && t >= lastT) { lastT = t; return advance(); }
+    if(P.mode==="ayah" && P.audio.duration > 1 && t >= P.audio.duration - 0.25 && t >= lastT) { lastT = t; return advance(); }
+  }
+  if(Date.now() - selfSeekAt > 300 || Math.abs(t - lastT) < 2) lastT = t;
+  // follow the recording: which ayah is being recited right now
   if(P.mode!=="surah" || !P.rows || P.seek!=null) return;
-  const t = P.audio.currentTime*1000;
+  const ms = t*1000;
   let row = null;
-  for(const r of P.rows){ if(r[1] <= t + 40) row = r; else break; }
+  for(const r of P.rows){ if(r[1] <= ms + 40) row = r; else break; }
   if(row) setCur(key(P.surah,row[0]));
+  if(P.endAt && P.endAt - ms < 90000){ const n = nextItem(); if(n && P.timings) prefetch(P.timings.audio[n.split(":")[0]]); }
 });
-P.audio.addEventListener("ended", ()=>{
-  if(P.mode==="surah"){ const n = P.surah<114 ? key(P.surah+1,1) : null; if(n) playFrom(n); else { P.playing=false; keepAwake(false); updatePlayer(); } return; }
-  const n = P.cur && nextKey(P.cur); if(n) playAyahFile(n); else { P.playing=false; keepAwake(false); updatePlayer(); }
-});
+P.audio.addEventListener("ended", advance);   // only if looping isn't honoured
 P.audio.addEventListener("error", ()=>{ if(P.cur && P.audio.getAttribute("src")) fallbackOrFail(); });
-// pauses and plays from the lock screen, headphones or a phone call
-P.audio.addEventListener("pause", ()=>{ if(!P.audio.ended && P.playing){ P.playing=false; keepAwake(false); updatePlayer(); } });
+// pauses and plays from the lock screen, headphones, the car or a phone call
+P.audio.addEventListener("pause", ()=>{ if(P.switching) return; if(P.playing){ P.playing=false; keepAwake(false); updatePlayer(); } });
 P.audio.addEventListener("play", ()=>{ if(!P.playing){ P.playing=true; updatePlayer(); } });
+// iOS ignores lock-screen controls set before playback starts, so set them each time it does
+P.audio.addEventListener("playing", ()=>{ P.switching = false; setMediaControls(); });
 function togglePlay(){
   if(P.playing){ P.audio.pause(); P.playing=false; keepAwake(false); updatePlayer(); return; }
   if(P.cur && !P.failed && pageHas(S.page,P.cur) && P.audio.getAttribute("src")){ startPlay(); return; }
   if(S.current && pageHas(S.page,S.current)) return playFrom(S.current);
   const first = (PAGES[S.page]||[])[0]; if(first) playFrom(key(first[0],first[1]));
 }
-// lock-screen and headphone controls
-if("mediaSession" in navigator){
+// lock-screen, headphone and car controls: previous and next ayah instead of 10-second skips
+function setMediaControls(){
+  if(!("mediaSession" in navigator)) return;
   const ms = navigator.mediaSession, on = (a,f)=>{ try { ms.setActionHandler(a,f); } catch(e){} };
   on("play", ()=>{ if(!P.playing) togglePlay(); });
   on("pause", ()=>{ if(P.playing) togglePlay(); });
-  on("previoustrack", ()=>{ const k = P.cur && prevKey(P.cur); if(k) playFrom(k); });
-  on("nexttrack", ()=>{ const k = P.cur && nextKey(P.cur); if(k) playFrom(k); });
+  on("previoustrack", ()=>{ const k = P.cur && prevKey(P.cur); if(k){ P.audio.pause(); P.mode==="surah" ? playFrom(k) : playAyahFile(k); } });
+  on("nexttrack", ()=>{ const k = P.cur && nextKey(P.cur); if(k){ P.audio.pause(); P.mode==="surah" ? playFrom(k) : playAyahFile(k); } });
+  on("seekbackward", null); on("seekforward", null);
 }
+setMediaControls();
 function updateMediaSession(rec){
   if(!("mediaSession" in navigator) || !P.cur) return;
   const [s,a] = P.cur.split(":").map(Number);
@@ -823,7 +875,11 @@ function reciterField(){
   const wl = el("label",{class:"check"}); const wc = el("input",{type:"checkbox",id:"wakeChk"}); wc.checked = S.wake;
   wc.onchange = ()=>{ S.wake = wc.checked; save(); keepAwake(P.playing && S.wake); };
   wl.append(wc, "Keep the screen on while reciting");
-  f.append(rs, wl); return f;
+  const as = el("label",{class:"lbl",for:"afterSel"},"After a surah");
+  const asel = el("select",{id:"afterSel"});
+  for(const [v,t] of [["next","Play the next surah (non-stop)"],["repeat","Repeat the surah"],["stop","Stop"]]){ const o=el("option",{value:v},t); if(S.afterSurah===v) o.selected=true; asel.append(o); }
+  asel.onchange = ()=>{ S.afterSurah = asel.value; save(); };
+  f.append(rs, wl, as, asel); return f;
 }
 
 function marksSheet(){
@@ -927,7 +983,7 @@ document.addEventListener("keydown",e=>{
 $("nextBtn").onclick=()=>go(S.page+1); $("prevBtn").onclick=()=>go(S.page-1);
 $("openSettings").onclick=settingsSheet; $("openMarks").onclick=marksSheet; $("scrim").onclick=closeSheet;
 $("playBtn").onclick=togglePlay;
-$("reciterBtn").onclick=()=>openSheet([el("h3",{},"Recitation"), reciterField(), el("p",{class:"empty"},"Recitation plays ayah by ayah and turns the page as it goes.")]);
+$("reciterBtn").onclick=()=>openSheet([el("h3",{},"Recitation"), reciterField(), el("p",{class:"empty"},"Recitation follows each ayah and turns the page as it goes. It keeps playing with the screen locked, in other apps and in the car.")]);
 $("surahJump").onchange=e=>{ const s=+e.target.value; $("ayahJump").value=""; $("ayahJump").max=SURAH_N[s-1]; go(SURAH_START[s]); };
 // Go to an ayah of the chosen surah: open its page and briefly mark it
 function goToAyah(s, a){
