@@ -1,5 +1,5 @@
 // Service worker: makes the app installable and lets pages you've opened work offline.
-const VERSION = "mushaf-v2";
+const VERSION = "mushaf-v3";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png"];
 
@@ -28,7 +28,9 @@ self.addEventListener("fetch", e => {
       .catch(() => caches.match("index.html")));
     return;
   }
-  if (IMMUTABLE(url)) {
+  // bundled IndoPak text and fonts: large and unchanging (a new version gets a new file name)
+  const BUNDLED = url.origin === self.location.origin && /\/(data|fonts)\//.test(url.pathname);
+  if (IMMUTABLE(url) || BUNDLED) {
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
       if (res.ok || res.type === "opaque") put(VERSION + "-data", req, res.clone());
       return res;

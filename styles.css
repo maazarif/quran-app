@@ -1,3 +1,7 @@
+/* IndoPak Nastaleeq (bundled, see data/SOURCES.md): three widths of one font for fitting lines */
+@font-face{font-family:"IP Normal";src:url("fonts/indopak/nastaleeq-normal.woff2") format("woff2");font-display:block}
+@font-face{font-family:"IP Compact";src:url("fonts/indopak/nastaleeq-compact.woff2") format("woff2");font-display:block}
+@font-face{font-family:"IP Compressed";src:url("fonts/indopak/nastaleeq-compressed.woff2") format("woff2");font-display:block}
 /* Layout: one Madani Mushaf page as paper on a green-tinted ground, read right-to-left; translation below; settings, saved ayat and ayah actions in bottom sheets */
 :root{
   --ground:#e3e8e2; --paper:#fbf8ee; --ink:#1d2421; --muted:#5f6d66;
@@ -50,6 +54,8 @@ button{cursor:pointer}
 .frame::before,.frame::after{content:"";position:absolute;width:14px;height:14px;background:var(--gilt);transform:rotate(45deg);left:calc(50% - 7px)}
 .frame::before{top:-8px} .frame::after{bottom:-8px}
 .runhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;direction:rtl;font-family:var(--f-ar-ui);color:var(--frame);font-size:1rem;padding:2px 4px 8px;border-bottom:1px solid var(--line);margin-bottom:10px}
+.runhead span{white-space:nowrap}
+.runhead span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .body{flex:1}
 .surah-head{margin:12px 0 6px;border:1.5px solid var(--frame);outline:1px solid var(--gilt);outline-offset:2px;padding:4px 10px;display:flex;justify-content:space-between;align-items:center;gap:10px;direction:rtl;
   background:linear-gradient(90deg,transparent,var(--chip) 25%,var(--chip) 75%,transparent)}
@@ -68,6 +74,27 @@ button{cursor:pointer}
 .ayah.playing{background:var(--play);box-shadow:0 0 0 1.5px var(--gilt)}
 .end{color:var(--gilt);font-family:var(--f-ar-ui);font-size:.8em;white-space:nowrap}
 .ayah.bm .end{color:var(--paper);background:var(--gilt);border-radius:999px;padding:0 .25em}
+
+/* IndoPak: 15 fixed lines per page, each justified across the width like the printed Taj copy */
+.frame.ip{padding:12px 10px 8px}
+.frame.ip .body{display:flex;flex-direction:column}
+.ipl{display:flex;direction:rtl;justify-content:space-between;align-items:center;height:var(--iplh);font-family:"IP Normal",serif;font-size:var(--ipf);line-height:1;white-space:nowrap;color:var(--ink)}
+.ipl.ipc{justify-content:center;gap:.28em}
+.ipl.ips{justify-content:center}
+.ipl.ips .surah-head{margin:0;width:100%;padding:2px 10px;font-size:max(13px,calc(var(--ipf)*.62))}
+.ipl.ips .surah-head .nm{font-size:1.25em}
+.ip .ayah{padding:.08em .04em;border-radius:4px}
+.ip .ayah:hover{background:none}
+.ip .ayah.hov{background:var(--sel)}
+.ip .ayah.sel{box-shadow:none;background:var(--sel);outline:1px solid var(--frame);outline-offset:-1px}
+.ip .ayah.playing{box-shadow:none;background:var(--play)}
+.ip .ayah.endw{color:var(--frame)}
+.ip .ayah.bm.endw{color:var(--paper);background:var(--gilt)}
+.ip .ayah[data-hl="amber"]{background:var(--hl-amber)}
+.ip .ayah[data-hl="green"]{background:var(--hl-green)}
+.ip .ayah[data-hl="blue"]{background:var(--hl-blue)}
+.ip .ayah[data-hl="rose"]{background:var(--hl-rose)}
+.sheet .ar.ipar{font-family:"IP Normal",serif;font-size:1.7rem;line-height:2.2}
 .folio{text-align:center;font-family:var(--f-ar-ui);color:var(--frame);font-size:1.05rem;margin-top:8px;padding-top:6px;border-top:1px solid var(--line)}
 .ribbon{position:absolute;top:0;left:22px;width:16px;height:34px;background:var(--gilt);clip-path:polygon(0 0,100% 0,100% 100%,50% 75%,0 100%)}
 .state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;color:var(--muted);padding:40px 10px}

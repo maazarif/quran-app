@@ -189,7 +189,7 @@ test("each Mushaf script style changes the Quran font and is remembered", () => 
   await page.waitForSelector(READY, { timeout: 15000 });
   await page.click("#openSettings");
   const styles = await page.locator(".seg button").count();
-  assert.equal(styles, 4);
+  assert.equal(styles, 5, "four Madani styles plus IndoPak");
   for (const [label, font] of [["Quranic Naskh","Scheherazade New"],["Classic Naskh","Amiri"],["Modern Naskh","Noto Naskh Arabic"],["Madani Mushaf","Amiri Quran"]]) {
     await page.locator(".seg button", { hasText: label }).click();
     assert.equal(await firstFont(page), font, label);
@@ -294,6 +294,202 @@ test("no script errors across a full session", () => withPage({ audio: "ok" }, a
   await page.click('.ayah[data-k="2:2"]'); await page.locator("#sheet .swatch.blue").click(); await page.keyboard.press("Escape");
   await page.click("#openMarks"); await page.keyboard.press("Escape");
   assert.deepEqual(log.errors, []);
+}));
+
+/* ---------- IndoPak edition (real bundled text and fonts) ---------- */
+import { readFileSync } from "node:fs";
+const IPDATA = JSON.parse(readFileSync(new URL("../data/indopak-15-lines.json", import.meta.url), "utf8"));
+const ipWordsOn = p => IPDATA[p-1].flatMap(l => l.t === "w" ? l.w : []);
+const pickIndopak = async page => {
+  await page.click("#openSettings");
+  await page.locator('.seg button[data-script="indopak"]').click();
+  await page.waitForSelector(".frame.ip .ipl", { timeout: 20000 });
+  await page.keyboard.press("Escape");
+};
+
+test("IndoPak: choosing it shows 15-line pages from a 610-page Mushaf", () => withPage({}, async ({ page, log }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await pickIndopak(page);
+  assert.equal(await page.locator(".ipl").count(), 15);
+  assert.match(await page.locator("#where").textContent(), /Page 1 of 610/);
+  assert.match(page.url(), /#i1$/);
+  await page.click("#nextBtn"); await page.waitForFunction(() => document.querySelector(".folio").textContent === "٢");
+  assert.equal(await page.locator(".ipl").count(), 15);
+  assert.deepEqual(log.errors, []);
+}));
+
+test("IndoPak: every word on sample pages is exactly the source text, in order", () => withPage({}, async ({ page }) => {
+  for (const p of [1, 2, 42, 302, 586, 610]) {
+    await page.goto(PAGE_URL + "#i" + p);
+    await page.waitForFunction(n => document.querySelector(".frame.ip .folio") && document.querySelector(".frame.ip .folio").textContent === String(n).replace(/\d/g, d => "٠١٢٣٤٥٦٧٨٩"[d]), p, { timeout: 20000 });
+    const shown = await page.$$eval(".ip .ayah", els => els.map(e => [e.dataset.k, e.textContent]));
+    const src = ipWordsOn(p).map(([loc, t]) => [loc.split(":").slice(0, 2).join(":"), t]);
+    assert.deepEqual(shown, src, "page " + p);
+  }
+}));
+
+test("IndoPak: lines match the printed page — same 15 lines, same words per line", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i42");
+  await page.waitForSelector('.ip .ayah[data-k="2:255"]', { timeout: 20000 });
+  const perLine = await page.$$eval(".ipl", ls => ls.map(l => l.querySelectorAll(".ayah").length));
+  assert.deepEqual(perLine, IPDATA[41].map(l => l.t === "w" ? l.w.length : 0));
+}));
+
+test("IndoPak: Bismillah lines use the source's own words of 1:1, and At-Tawbah has none", () => withPage({}, async ({ page }) => {
+  const bism = ipWordsOn(1).filter(([loc]) => /^1:1:[1-4]$/.test(loc)).map(x => x[1]);
+  await page.goto(PAGE_URL + "#i2");
+  await page.waitForSelector(".ipl.ipb", { timeout: 20000 });
+  assert.deepEqual(await page.$$eval(".ipl.ipb .w", ws => ws.map(w => w.textContent)), bism);
+  const p9 = IPDATA.findIndex(pg => pg.some(l => l.t === "s" && l.s === 9)) + 1;
+  await page.goto(PAGE_URL + "#i" + p9);
+  await page.waitForSelector(".ipl.ips", { timeout: 20000 });
+  const order = await page.$$eval(".ipl", ls => ls.map(l => l.className));
+  const i9 = IPDATA[p9-1].findIndex(l => l.t === "s" && l.s === 9);
+  assert.ok(!/ipb/.test(order[i9 + 1] || ""), "no Bismillah line after the At-Tawbah header");
+}));
+
+test("IndoPak: known pages of the printed copy — Ayat al-Kursi p42, Juz 30 p586, An-Nas p610", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i1");
+  await page.waitForSelector(".frame.ip", { timeout: 20000 });
+  await page.locator("#juzJump").selectOption("30");
+  await page.waitForFunction(() => document.querySelector(".folio").textContent === "٥٨٦");
+  await page.locator("#surahJump").selectOption("114");
+  await page.waitForSelector('.ip .ayah[data-k="114:6"]');
+  assert.equal(await page.locator(".folio").textContent(), "٦١٠");
+  assert.equal(await page.locator("#nextBtn").isDisabled(), true);
+  await page.fill("#pageJump", "42"); await page.locator("#pageJump").blur();
+  await page.waitForSelector('.ip .ayah[data-k="2:255"]');
+}));
+
+test("IndoPak: the font draws the ayah-number glyphs (not blank boxes)", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i1");
+  await page.waitForSelector(".frame.ip .ayah", { timeout: 20000 });
+  const r = await page.evaluate(() => {
+    const c = document.createElement("canvas").getContext("2d");
+    const wOf = f => { c.font = '40px ' + f; return c.measureText("").width; };
+    return { loaded: document.fonts.check('40px "IP Normal"', ""), ip: wOf('"IP Normal"'), fallback: wOf("monospace") };
+  });
+  assert.ok(r.loaded, "IndoPak font not loaded");
+  assert.notEqual(Math.round(r.ip), Math.round(r.fallback), "ayah markers would fall back to another font");
+}));
+
+test("IndoPak: no line spills outside the page at phone and desktop widths", async () => {
+  for (const vp of [{ width: 360, height: 740 }, { width: 390, height: 844 }, { width: 1100, height: 900 }]) await withPage({}, async ({ page }) => {
+    for (const p of [3, 42, 200, 500]) {
+      await page.goto(PAGE_URL + "#i" + p);
+      await page.waitForFunction(n => document.querySelector(".frame.ip .folio") && document.querySelector(".frame.ip .folio").textContent === String(n).replace(/\d/g, d => "٠١٢٣٤٥٦٧٨٩"[d]), p, { timeout: 20000 });
+      const bad = await page.evaluate(() => [...document.querySelectorAll(".ipl")].filter(l => { const b = l.getBoundingClientRect(), body = l.parentElement.getBoundingClientRect(); return [...l.children].some(c => { const r = c.getBoundingClientRect(); return r.left < body.left - 1 || r.right > body.right + 1; }); }).length);
+      assert.equal(bad, 0, "page " + p + " at " + vp.width + "px");
+      const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+      assert.ok(sw <= cw, "page scrolls sideways at " + vp.width + "px");
+    }
+  }, vp);
+});
+
+test("IndoPak: switching editions keeps your place", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#p300");
+  await page.waitForFunction(() => document.querySelector(".folio") && document.querySelector(".folio").textContent === "٣٠٠", null, { timeout: 15000 });
+  const first = await page.$eval(".ayah", e => e.dataset.k);
+  await pickIndopak(page);
+  assert.equal(await page.locator('.ip .ayah[data-k="' + first + '"]').count() > 0, true, first + " not on the IndoPak page");
+  await page.click("#openSettings");
+  await page.locator('.seg button[data-script="amiriq"]').click();
+  await page.waitForSelector(".frame:not(.ip) .ayah");
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator('.ayah[data-k="' + first + '"]').count(), 1);
+}));
+
+test("IndoPak: tapping a word selects the whole ayah; highlight and bookmark cover every word", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i42");
+  await page.waitForSelector('.ip .ayah[data-k="2:255"]', { timeout: 20000 });
+  const n = await page.locator('.ip .ayah[data-k="2:255"]').count();
+  await page.locator('.ip .ayah[data-k="2:255"]').nth(3).click();
+  assert.equal(await page.locator('.ip .ayah.sel[data-k="2:255"]').count(), n);
+  assert.match(await page.locator("#sheet h3").textContent(), /2:255 · page 42/);
+  assert.deepEqual(await page.$$eval("#sheet .ipar span", s => s.map(x => x.textContent)), ipWordsOn(42).filter(([l]) => l.startsWith("2:255:")).map(x => x[1]));
+  await page.locator("#sheet .swatch.blue").click();
+  await page.waitForFunction(n => document.querySelectorAll('.ip .ayah[data-hl="blue"][data-k="2:255"]').length === n, n);
+  await page.locator("#sheet button", { hasText: "Bookmark" }).click();
+  await page.waitForSelector('.ip .ayah.bm.endw[data-k="2:255"]');
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator(".ribbon").count(), 1);
+  await page.reload();
+  await page.waitForSelector('.ip .ayah[data-hl="blue"][data-k="2:255"]', { timeout: 20000 });
+  await page.click("#openMarks");
+  assert.match(await page.locator(".bm-item").first().textContent(), /2:255.*p\. 42/);
+}));
+
+test("IndoPak: Copy gives the standard Unicode text that other apps can show", () => withPage({}, async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "https://reader.test" });
+  await page.goto(PAGE_URL + "#i1");
+  await page.waitForSelector('.ip .ayah[data-k="1:2"]', { timeout: 20000 });
+  await page.locator('.ip .ayah[data-k="1:2"]').first().click();
+  await page.locator("#sheet button", { hasText: "Copy" }).click();
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  assert.equal(clip, arText(1, 2) + " ﴿٢﴾\nEN 1:2\n— Al-Fatihah 1:2");
+  assert.ok(!/[-]/.test(clip), "clipboard must not contain font-only characters");
+}));
+
+test("IndoPak: recitation highlights each ayah's words and turns the IndoPak page", () => withPage({ audio: "ok" }, async ({ page }) => {
+  // in the 15-line copy, 2:4 ends page 2 and 2:5 starts page 3
+  assert.equal(IPDATA[2].find(l => l.t === "w").w[0][0], "2:5:1");
+  await page.goto(PAGE_URL + "#i2");
+  await page.waitForSelector('.ip .ayah[data-k="2:4"]', { timeout: 20000 });
+  await page.locator('.ip .ayah[data-k="2:4"]').first().click();
+  await page.locator("#sheet button", { hasText: "Play from here" }).click();
+  await page.waitForFunction(() => { const w = document.querySelectorAll('.ip .ayah[data-k="2:4"]'); return w.length && [...w].every(x => x.classList.contains("playing")); });
+  await page.waitForSelector('.ip .ayah.playing[data-k="2:5"]', { timeout: 10000 });
+  assert.equal(await page.locator(".folio").textContent(), "٣");
+}));
+
+test("IndoPak data: every page ends at the end of an ayah, like the printed Taj copy", () => {
+  const COUNT_OF = Object.fromEntries(COUNTS.map((c,i)=>[i+1,c]));
+  const lastWordOf = {};
+  for (let p = 1; p <= 610; p++) for (const [loc] of ipWordsOn(p)) { const [s,a,w] = loc.split(":").map(Number); lastWordOf[s+":"+a] = w; }
+  for (let p = 1; p <= 610; p++) {
+    const [s,a,w] = ipWordsOn(p).at(-1)[0].split(":").map(Number);
+    assert.equal(w, lastWordOf[s+":"+a], "page " + p + " ends mid-ayah " + s + ":" + a);
+  }
+  assert.equal(Object.keys(lastWordOf).length, COUNTS.reduce((x,y)=>x+y,0));
+});
+
+test("IndoPak: a #i link opens that IndoPak page, a #p link the Madani page", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i586");
+  await page.waitForFunction(() => document.querySelector(".frame.ip .folio") && document.querySelector(".frame.ip .folio").textContent === "٥٨٦", null, { timeout: 20000 });
+  await page.evaluate(() => { location.hash = "#p42"; });
+  await page.waitForFunction(() => document.querySelector(".frame:not(.ip) .folio") && document.querySelector(".folio").textContent === "٤٢", null, { timeout: 20000 });
+}));
+
+test("IndoPak: still readable when translations can't load", () => withPage({ text: "404" }, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i42");
+  await page.waitForSelector('.ip .ayah[data-k="2:255"]', { timeout: 20000 });
+  assert.match(await page.locator("#trans").textContent(), /translation didn't load/);
+}));
+
+test("IndoPak: settings show the IndoPak sample in its own font; text size is fixed to the page", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#openSettings");
+  const sample = page.locator('.seg button[data-script="indopak"] .sample');
+  await page.waitForFunction(() => document.querySelector('.seg button[data-script="indopak"] .sample').textContent.length > 0);
+  assert.equal(await sample.textContent(), ipWordsOn(1).filter(([l]) => /^1:1:[1-4]$/.test(l)).map(x => x[1]).join(" "));
+  await page.locator('.seg button[data-script="indopak"]').click();
+  await page.waitForSelector('.seg button[data-script="indopak"][aria-pressed="true"]', { timeout: 20000 });
+  assert.equal(await page.locator("#size").isDisabled(), true);
+}));
+
+test("IndoPak: reopens offline after it has been read once", () => withPage({ sw: true }, async ({ page, context }) => {
+  await page.goto(PAGE_URL + "#i42");
+  await page.waitForSelector('.ip .ayah[data-k="2:255"]', { timeout: 20000 });
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+  await page.waitForSelector('.ip .ayah[data-k="2:255"]', { timeout: 20000 });
+  await page.waitForTimeout(500);
+  await context.unrouteAll({ behavior: "ignoreErrors" });
+  await context.setOffline(true);
+  await page.goto(PAGE_URL + "#i43");
+  await page.waitForFunction(() => document.querySelector(".frame.ip .folio") && document.querySelector(".frame.ip .folio").textContent === "٤٣", null, { timeout: 20000 });
+  assert.ok(await page.evaluate(() => document.fonts.check('40px "IP Normal"', "")));
 }));
 
 /* ---------- installable app ---------- */
