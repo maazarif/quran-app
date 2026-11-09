@@ -425,49 +425,111 @@ test("Highlight mode: the colour bar doesn't cover the last line of the page on 
   assert.ok(r.folio <= r.bar, "page bottom " + r.folio + " is under the bar at " + r.bar);
 }, { width: 390, height: 844 }));
 
-/* ---------- reading mode (tap highlights) and settings ---------- */
+/* ---------- reading mode (tap marks your place) and settings ---------- */
 const openSettingsPick = async (page, seg, v) => { await page.click("#openSettings"); await page.locator("#" + seg + ' button[data-v="' + v + '"]').click(); await page.keyboard.press("Escape"); };
+const curKeys = page => page.$$eval("#page .cur", e => [...new Set(e.map(x => x.dataset.k))]);
+const hold = async (page, sel) => { const box = await page.locator(sel).first().boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(650); await page.mouse.up(); };
 
-test("Reading mode is the default: tapping highlights with no popup, and holding opens the menu", () => withPage({ tap: "default" }, async ({ page }) => {
+test("Reading mode (default): a tap marks one ayah; tapping another moves the mark; nothing is saved", () => withPage({ tap: "default" }, async ({ page }) => {
   await page.waitForSelector(READY, { timeout: 15000 });
   await page.click('.ayah[data-k="1:2"]');
-  await page.waitForSelector('.ayah[data-k="1:2"][data-hl="amber"]');
-  assert.equal(await page.locator("#sheet").isVisible(), false);
-  assert.equal(await page.locator("#hlbar").isVisible(), false, "no colour bar needed");
+  assert.deepEqual(await curKeys(page), ["1:2"]);
+  assert.equal(await page.locator("#sheet").isVisible(), false, "no popup");
   assert.match(await page.locator("#toast").textContent(), /hold an ayah/i);
-  const box = await page.locator('.ayah[data-k="1:4"] .end').boundingBox();   // the ayah's number marker
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(650); await page.mouse.up();
-  await page.waitForSelector("#sheet:not([hidden])");
-  assert.match(await page.locator("#sheet h3").textContent(), /1:4/);
+  await page.click('.ayah[data-k="1:5"]');
+  assert.deepEqual(await curKeys(page), ["1:5"], "only the latest ayah is marked");
+  assert.equal(await page.locator("#page [data-hl]").count(), 0, "no lasting highlights made");
+  assert.equal(await page.locator("#markCount").textContent(), "0");
+  assert.equal(await page.locator('.trow.cur[data-k="1:5"]').count(), 1, "its translation is marked too");
+  await page.click('.ayah[data-k="1:5"]');
+  assert.deepEqual(await curKeys(page), [], "tapping it again clears the mark");
 }));
 
-test("Settings: 'Tapping an ayah' switches between highlighting and the menu, and is remembered", () => withPage({ tap: "default" }, async ({ page }) => {
+test("Reading mode: holding opens the menu; your place is kept after reload and play starts there", () => withPage({ tap: "default", audio: "ok" }, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click('.ayah[data-k="1:3"]');
+  await hold(page, '.ayah[data-k="1:4"] .end');
+  await page.waitForSelector("#sheet:not([hidden])");
+  assert.match(await page.locator("#sheet h3").textContent(), /1:4/);
+  await page.keyboard.press("Escape");
+  assert.deepEqual(await curKeys(page), ["1:3"], "holding doesn't move your place");
+  await page.reload(); await page.waitForSelector('.ayah.cur[data-k="1:3"]', { timeout: 15000 });
+  const req = page.waitForRequest(u => u.url().endsWith("/001003.mp3"));
+  await page.click("#playBtn");
+  await req;
+}));
+
+test("Reading mode works the same in IndoPak (every word of the ayah)", () => withPage({ tap: "default" }, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i42");
+  await page.waitForSelector('.ip .ayah[data-k="2:255"]', { timeout: 20000 });
+  await page.locator('.ip .ayah[data-k="2:254"]').nth(2).click();
+  await page.locator('.ip .ayah[data-k="2:255"]').nth(4).click();
+  assert.deepEqual(await curKeys(page), ["2:255"]);
+  const n = await page.locator('.ip .ayah[data-k="2:255"]').count();
+  assert.equal(await page.locator('.ip .ayah.cur[data-k="2:255"]').count(), n);
+  assert.equal(await page.locator("#page [data-hl]").count(), 0);
+}));
+
+test("Settings: 'Tapping an ayah' switches between marking your place and the menu, and is remembered", () => withPage({ tap: "default" }, async ({ page }) => {
   await page.waitForSelector(READY, { timeout: 15000 });
   await page.click("#openSettings");
-  assert.equal(await page.locator('#tapSeg button[data-v="highlight"]').getAttribute("aria-pressed"), "true");
+  assert.equal(await page.locator('#tapSeg button[data-v="mark"]').getAttribute("aria-pressed"), "true");
   await page.locator('#tapSeg button[data-v="menu"]').click();
   await page.keyboard.press("Escape");
   await page.click('.ayah[data-k="1:3"]');
   await page.waitForSelector("#sheet:not([hidden])");
-  assert.equal(await page.locator('.ayah[data-k="1:3"]').getAttribute("data-hl"), null);
   await page.keyboard.press("Escape");
   await page.reload(); await page.waitForSelector(READY, { timeout: 15000 });
   await page.click('.ayah[data-k="1:3"]');
   await page.waitForSelector("#sheet:not([hidden])");
   await page.keyboard.press("Escape");
-  await openSettingsPick(page, "tapSeg", "highlight");
-  await page.click('.ayah[data-k="1:3"]');
-  await page.waitForSelector('.ayah[data-k="1:3"][data-hl]');
+  await openSettingsPick(page, "tapSeg", "mark");
+  await page.click('.ayah[data-k="1:6"]');
+  assert.deepEqual(await curKeys(page), ["1:6"]);
 }));
 
-test("Settings: the highlight colour chosen there is used for taps", () => withPage({ tap: "highlight" }, async ({ page }) => {
+test("Upgrade: anyone on yesterday's 'tap highlights' setting gets the place mark, not more lasting highlights", () => withPage({ tap: "highlight" }, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click('.ayah[data-k="1:2"]'); await page.click('.ayah[data-k="1:4"]');
+  assert.equal(await page.locator("#page [data-hl]").count(), 0);
+  assert.deepEqual(await curKeys(page), ["1:4"]);
+}));
+
+test("Highlighter button: lasting highlights in the colour chosen in settings", () => withPage({ tap: "default" }, async ({ page }) => {
   await page.waitForSelector(READY, { timeout: 15000 });
   await page.click("#openSettings");
   await page.locator('#hlColorSet .swatch.blue').click();
-  assert.equal(await page.locator('#hlColorSet .swatch.blue').getAttribute("aria-pressed"), "true");
   await page.keyboard.press("Escape");
-  await page.click('.ayah[data-k="1:6"]');
+  await page.click("#hlBtn");
+  await page.click('.ayah[data-k="1:6"]'); await page.click('.ayah[data-k="1:7"]');
   await page.waitForSelector('.ayah[data-k="1:6"][data-hl="blue"]');
+  await page.waitForSelector('.ayah[data-k="1:7"][data-hl="blue"]');
+  await page.click("#hlDone");
+  await page.click('.ayah[data-k="1:2"]');
+  assert.deepEqual(await curKeys(page), ["1:2"], "after Done, taps mark your place again");
+  assert.equal(await page.locator("#page [data-hl]").count(), 2, "lasting highlights stay");
+}));
+
+test("Saved: 'Remove all highlights' asks first, then clears highlights and keeps bookmarks", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#hlBtn");
+  for (const k of ["1:2", "1:3", "1:5"]) await page.click('.ayah[data-k="' + k + '"]');
+  await page.click("#hlDone");
+  await page.click('.ayah[data-k="1:6"]');
+  await page.locator("#sheet button", { hasText: "Bookmark" }).click();
+  await page.keyboard.press("Escape");
+  await page.click("#openMarks");
+  await page.click("#clearHl");
+  assert.match(await page.locator(".clearhl").textContent(), /Remove 3 highlights\? Bookmarks stay/);
+  assert.equal(await page.locator("#page [data-hl]").count(), 3, "nothing removed before confirming");
+  await page.click("#clearHlYes");
+  await page.waitForFunction(() => !document.querySelector("#page [data-hl]"));
+  assert.equal(await page.locator(".bm-item").count(), 1);
+  assert.match(await page.locator(".bm-item").textContent(), /1:6.*Bookmarked/);
+  assert.equal(await page.locator("#clearHl").count(), 0);
+  await page.reload(); await page.waitForSelector('.ayah.bm[data-k="1:6"]', { timeout: 15000 });
+  assert.equal(await page.locator("#page [data-hl]").count(), 0);
 }));
 
 /* ---------- side by side layout ---------- */
@@ -511,12 +573,14 @@ test("Side by side in IndoPak: the Arabic is the exact IndoPak words; nothing sp
   assert.equal(out, 0);
 }, { width: 360, height: 740 }));
 
-test("Side by side: tap highlights the row, recitation follows rows across pages, go-to-ayah marks the row", () => withPage({ tap: "highlight", audio: "ok" }, async ({ page }) => {
+test("Side by side: tap marks the row, recitation follows rows across pages, go-to-ayah marks the row", () => withPage({ tap: "default", audio: "ok" }, async ({ page }) => {
   await page.goto(PAGE_URL + "#p1");
   await page.waitForSelector(READY, { timeout: 15000 });
   await openSettingsPick(page, "layoutSeg", "side");
   await page.click('.vrow[data-k="1:5"]');
-  await page.waitForSelector('.vrow[data-k="1:5"][data-hl="amber"]');
+  await page.click('.vrow[data-k="1:6"]');
+  assert.deepEqual(await curKeys(page), ["1:6"]);
+  assert.equal(await page.locator("#page [data-hl]").count(), 0);
   assert.equal(await page.locator("#sheet").isVisible(), false);
   const box = await page.locator('.vrow[data-k="1:7"]').boundingBox();
   await page.mouse.move(box.x + 10, box.y + 10); await page.mouse.down(); await page.waitForTimeout(650); await page.mouse.up();

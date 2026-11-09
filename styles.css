@@ -4,6 +4,7 @@
 @font-face{font-family:"IP Compressed";src:url("fonts/indopak/nastaleeq-compressed.woff2") format("woff2");font-display:block}
 /* Layout: one Madani Mushaf page as paper on a green-tinted ground, read right-to-left; translation below; settings, saved ayat and ayah actions in bottom sheets */
 :root{
+  --cur:rgba(31,90,75,.17);
   --ground:#e3e8e2; --paper:#fbf8ee; --ink:#1d2421; --muted:#5f6d66;
   --frame:#1f5a4b; --gilt:#a8833a; --line:#cfd8d0; --chip:#eef2ec;
   --hl-amber:rgba(240,196,70,.38); --hl-green:rgba(90,180,120,.30);
@@ -19,13 +20,13 @@
   --frame:#4f9a83; --gilt:#cfae62; --line:#2a3632; --chip:#1e2a26;
   --hl-amber:rgba(230,185,60,.26); --hl-green:rgba(90,190,130,.22);
   --hl-blue:rgba(100,160,235,.24); --hl-rose:rgba(230,115,140,.24);
-  --sel:rgba(120,200,170,.16); --play:rgba(207,174,98,.22); --danger:#e08a8a; color-scheme:dark}}
+  --sel:rgba(120,200,170,.16); --cur:rgba(120,200,170,.24); --play:rgba(207,174,98,.22); --danger:#e08a8a; color-scheme:dark}}
 :root[data-theme="dark"]{
   --ground:#0c1311; --paper:#161f1c; --ink:#ebe4cf; --muted:#9aa89f;
   --frame:#4f9a83; --gilt:#cfae62; --line:#2a3632; --chip:#1e2a26;
   --hl-amber:rgba(230,185,60,.26); --hl-green:rgba(90,190,130,.22);
   --hl-blue:rgba(100,160,235,.24); --hl-rose:rgba(230,115,140,.24);
-  --sel:rgba(120,200,170,.16); --play:rgba(207,174,98,.22); --danger:#e08a8a; color-scheme:dark}
+  --sel:rgba(120,200,170,.16); --cur:rgba(120,200,170,.24); --play:rgba(207,174,98,.22); --danger:#e08a8a; color-scheme:dark}
 
 *{box-sizing:border-box}
 body{background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.5}
@@ -218,3 +219,10 @@ input[type=range]{width:100%;accent-color:var(--frame)}
 .vrow.bm .end{color:var(--paper);background:var(--gilt);border-radius:999px;padding:0 .25em}
 .vrow.bm .ref::after{content:" · bookmarked";color:var(--gilt)}
 @media (max-width:420px){.vrow{gap:10px;padding:10px 2px}.vrow .vtr{font-size:.88rem}}
+
+/* the ayah you are on (reading mode): one at a time, shown over any highlight */
+.ayah.cur,.ip .ayah.cur,.vrow.cur,.trow.cur{background:var(--cur)!important}
+.ayah.cur:not(.ip .ayah){box-shadow:0 0 0 1.5px var(--frame)}
+.vrow.cur{box-shadow:inset 3px 0 0 var(--frame)}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:var(--paper)}
+.clearhl{padding-top:12px;border-top:1px solid var(--line)}

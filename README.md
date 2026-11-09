@@ -1,6 +1,6 @@
 # Mushaf Reader
 
-An installable Quran web app with two Mushaf editions: the 604-page Madani Mushaf (Uthmani script, four font styles) and the 610-page IndoPak 15-line Taj Mushaf (Nastaleeq script, with the printed copy's exact line breaks). It has 10 translations (below the page, or side by side with the Arabic), 8 reciters, bookmarks and highlights. By default, tapping an ayah highlights it (press and hold for bookmark, copy and play); this can be changed in settings. It installs to a phone's home screen and works offline for pages you have already opened.
+An installable Quran web app with two Mushaf editions: the 604-page Madani Mushaf (Uthmani script, four font styles) and the 610-page IndoPak 15-line Taj Mushaf (Nastaleeq script, with the printed copy's exact line breaks). It has 10 translations (below the page, or side by side with the Arabic), 8 reciters, bookmarks and highlights. By default, tapping an ayah marks your place (one ayah at a time; press and hold for bookmark, highlight, copy and play); lasting highlights come from the highlighter button. Both can be changed in settings. It installs to a phone's home screen and works offline for pages you have already opened.
 
 ## Put it online (free, about 5 minutes)
 

@@ -49,13 +49,13 @@ const store = {
 const COLORS_OK = c => ["amber","green","blue","rose"].includes(c) ? c : "amber";
 const S = {
   page: store.get("page",1), script: store.get("script","amiriq"), size: store.get("size",1.75),
-  hlColor: COLORS_OK(store.get("hlColor","amber")), tapAction: store.get("tapAction","highlight")==="menu" ? "menu" : "highlight", layout: store.get("layout","page")==="side" ? "side" : "page", ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
+  hlColor: COLORS_OK(store.get("hlColor","amber")), tapAction: store.get("tapAction","mark")==="menu" ? "menu" : "mark", current: store.get("current",null), layout: store.get("layout","page")==="side" ? "side" : "page", ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
   bookmarks: store.get("bookmarks",[]), highlights: store.get("highlights",{}), sel:null
 };
 if(!SCRIPTS.some(x=>x.id===S.script)) S.script="amiriq";
 if(!TRANSLATIONS.some(x=>x.id===S.trans)) S.trans="en";
 if(!RECITERS.some(x=>x.id===S.reciter)) S.reciter="Alafasy_128kbps";
-const save = () => ["page","script","size","hlColor","tapAction","layout","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
+const save = () => ["page","script","size","hlColor","tapAction","current","layout","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
 
 /* ---------- data ---------- */
 // On its own site the app can download the JSON files directly (they are served with CORS).
@@ -267,6 +267,7 @@ function surahHeadEl(s){
   return sh;
 }
 const flagAyah = (node, k) => {
+  if(S.current===k) node.classList.add("cur");
   if(S.bookmarks.includes(k)) node.classList.add("bm");
   if(S.highlights[k]) node.dataset.hl = S.highlights[k];
   if(S.sel===k) node.classList.add("sel");
@@ -372,6 +373,7 @@ async function renderPage(){
     if(S.bookmarks.includes(k)) sp.classList.add("bm");
     if(S.highlights[k]) sp.dataset.hl = S.highlights[k];
     if(S.sel===k) sp.classList.add("sel");
+    if(S.current===k) sp.classList.add("cur");
     if(P.cur===k) sp.classList.add("playing");
     sp.append(document.createTextNode(verse(bySurah[s],a).text || ""), document.createTextNode(" "), el("span",{class:"end"},"﴿"+AR(a)+"﴾"));
     para.append(sp, document.createTextNode(" "));
@@ -397,6 +399,7 @@ function layoutIndopak(body, p){
     if(S.bookmarks.includes(k)) sp.classList.add("bm");
     if(S.highlights[k]) sp.dataset.hl = S.highlights[k];
     if(S.sel===k) sp.classList.add("sel");
+    if(S.current===k) sp.classList.add("cur");
     if(P.cur===k) sp.classList.add("playing");
     sp.textContent = txt;
     return sp;
@@ -463,6 +466,7 @@ function renderTrans(list, bySurah, err){
     const v = verse(bySurah[s],a), k = key(s,a);
     const row = el("div",{class:"trow"+(P.cur===k?" playing":""),"data-k":k,role:"button",tabindex:"0"});
     if(S.highlights[k]) row.dataset.hl = S.highlights[k];
+    if(S.current===k) row.classList.add("cur");
     const d = el("div");
     if(S.translit && v.transliteration) d.append(el("p",{class:"tl"},v.transliteration));
     if(S.trans!=="none" && v.translation) d.append(el("p", T.rtl?{dir:"rtl"}:{}, v.translation));
@@ -507,6 +511,7 @@ P.audio.addEventListener("error", ()=>{ if(P.cur){ P.playing=false; P.failed=tru
 function togglePlay(){
   if(P.playing){ P.audio.pause(); P.playing=false; updatePlayer(); return; }
   if(P.cur && !P.failed && pageHas(S.page,P.cur) && P.audio.src){ P.audio.play().then(()=>{P.playing=true;updatePlayer()}).catch(()=>{P.failed=true;updatePlayer()}); return; }
+  if(S.current && pageHas(S.page,S.current)) return playFrom(S.current);
   const first = (PAGES[S.page]||[])[0]; if(first) playFrom(key(first[0],first[1]));
 }
 function markPlaying(){
@@ -633,17 +638,18 @@ function settingsSheet(){
   f3.append(ts, cl); nodes.push(f3);
 
   nodes.push(choice("Tapping an ayah","tapSeg",[
-      {v:"highlight",name:"Highlights it",cap:"Reading mode · hold for the menu"},
+      {v:"mark",name:"Marks your place",cap:"One ayah at a time · hold for the menu"},
       {v:"menu",name:"Opens the menu",cap:"Bookmark, copy, play"}],
     S.tapAction, v=>{ S.tapAction=v; save(); settingsSheet(); }));
-  const fc = el("div",{class:"field"}); fc.append(el("span",{class:"lbl"},"Highlight colour"));
+  const fc = el("div",{class:"field"}); fc.append(el("span",{class:"lbl"},"Highlighter colour"));
   const cr = el("div",{class:"row",id:"hlColorSet"});
   for(const c of COLORS){
     const sw = el("button",{class:"swatch "+c,"data-c":c,"aria-label":c,"aria-pressed":String(S.hlColor===c)});
     sw.onclick = ()=>{ S.hlColor=c; hlErase=false; save(); updateHlBar(); settingsSheet(); };
     cr.append(sw);
   }
-  fc.append(cr); nodes.push(fc);
+  fc.append(cr, el("span",{class:"cap"},"For lasting highlights: tap the highlighter button at the top, or hold an ayah."));
+  nodes.push(fc);
 
   nodes.push(reciterField());
   openSheet(nodes);
@@ -696,6 +702,19 @@ function marksSheet(){
     b.onclick = ()=>{ closeSheet(); go(AYAH_PAGE[k]); setTimeout(()=>{ const e=document.querySelector('.ayah[data-k="'+k+'"]'); if(e){ e.scrollIntoView({block:"center",behavior:"smooth"}); e.classList.add("sel"); setTimeout(()=>e.classList.remove("sel"),1500);} },600); };
     nodes.push(b);
   }
+  const nHl = Object.keys(S.highlights).length;
+  if(nHl){
+    const box = el("div",{class:"row clearhl"});
+    const ask = el("button",{class:"btn",id:"clearHl"},"Remove all highlights");
+    ask.onclick = ()=>{
+      box.replaceChildren(el("span",{class:"cap"},"Remove "+nHl+" highlight"+(nHl>1?"s":"")+"? Bookmarks stay."));
+      const yes = el("button",{class:"btn danger",id:"clearHlYes"},"Remove"), no = el("button",{class:"btn"},"Cancel");
+      yes.onclick = ()=>{ S.highlights = {}; save(); updateCount(); renderPage(); marksSheet(); toast("Highlights removed"); };
+      no.onclick = marksSheet;
+      box.append(yes, no);
+    };
+    box.append(ask); nodes.push(box);
+  }
   openSheet(nodes);
 }
 
@@ -723,11 +742,18 @@ function quickHighlight(k){
   if(had===S.highlights[k]) return;
   save(); updateCount(); paintHl(k);
 }
-const tapHighlights = () => hlMode || S.tapAction==="highlight";
+// Reading mode: a tap marks the ayah you are on (one at a time, nothing saved as a highlight)
+function setCurrent(k){
+  S.current = k; save();
+  document.querySelectorAll(".cur").forEach(x=>x.classList.remove("cur"));
+  if(k) document.querySelectorAll('[data-k="'+k+'"]').forEach(x=>{ if(!x.closest("#sheet")) x.classList.add("cur"); });
+}
+const tapHighlights = () => hlMode || S.tapAction!=="menu";   // taps that don't open the menu (so holding does)
 function tapAyah(k){
-  if(!tapHighlights()) return ayahSheet(k);
-  quickHighlight(k);
-  if(!store.get("tipHold",false)){ store.set("tipHold",true); toast("Highlighted. Press and hold an ayah to bookmark, copy or play it."); }
+  if(hlMode) return quickHighlight(k);
+  if(S.tapAction==="menu") return ayahSheet(k);
+  setCurrent(S.current===k ? null : k);
+  if(!store.get("tipHold2",false)){ store.set("tipHold2",true); toast("Press and hold an ayah to bookmark, highlight, copy or play it."); }
 }
 
 let holdT = null, held = false;
