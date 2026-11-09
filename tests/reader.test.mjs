@@ -296,6 +296,135 @@ test("no script errors across a full session", () => withPage({ audio: "ok" }, a
   assert.deepEqual(log.errors, []);
 }));
 
+/* ---------- go to an ayah number ---------- */
+const flashOn = (page, k) => page.waitForFunction(k => { const e = document.querySelectorAll('.ayah[data-k="' + k + '"]'); return e.length && [...e].every(x => x.classList.contains("flash")); }, k, { timeout: 10000 });
+
+test("Ayah number: choose a surah, type an ayah, and that ayah's page opens with the ayah marked", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.locator("#surahJump").selectOption("2");
+  await page.waitForSelector('.ayah[data-k="2:1"]');
+  assert.equal(await page.locator("#ayahJump").getAttribute("max"), "286");
+  await page.fill("#ayahJump", "255"); await page.press("#ayahJump", "Enter");
+  await flashOn(page, "2:255");
+  assert.equal(await page.locator("#surahJump").inputValue(), "2");
+  assert.equal(await page.locator("#ayahJump").inputValue(), "255");
+  const inView = await page.$eval('.ayah[data-k="2:255"]', e => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
+  assert.ok(inView, "ayah scrolled into view");
+}, { width: 390, height: 844 }));
+
+test("Ayah number: too high a number goes to the surah's last ayah; changing surah resets the box", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.locator("#surahJump").selectOption("1");
+  await page.fill("#ayahJump", "99"); await page.press("#ayahJump", "Enter");
+  await flashOn(page, "1:7");
+  assert.equal(await page.locator("#ayahJump").inputValue(), "7");
+  await page.locator("#surahJump").selectOption("114");
+  await page.waitForSelector('.ayah[data-k="114:1"]');
+  assert.equal(await page.locator("#ayahJump").inputValue(), "");
+  assert.equal(await page.locator("#ayahJump").getAttribute("max"), "6");
+}));
+
+test("Ayah number: the surah stays chosen when its first ayah is mid-page", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i1");
+  await page.waitForSelector(".frame.ip", { timeout: 20000 });
+  await page.locator("#surahJump").selectOption("114");
+  await page.fill("#ayahJump", "4"); await page.press("#ayahJump", "Enter");
+  await flashOn(page, "114:4");
+  assert.equal(await page.locator(".folio").textContent(), "٦١٠");
+  assert.equal(await page.locator("#surahJump").inputValue(), "114");
+}));
+
+test("Ayah number in IndoPak: Ayat al-Kursi opens page 42 with all its words marked", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i1");
+  await page.waitForSelector(".frame.ip", { timeout: 20000 });
+  await page.locator("#surahJump").selectOption("2");
+  await page.waitForSelector('.ip .ayah[data-k="2:1"]');
+  await page.fill("#ayahJump", "255"); await page.press("#ayahJump", "Enter");
+  await flashOn(page, "2:255");
+  assert.equal(await page.locator(".folio").textContent(), "٤٢");
+}));
+
+test("phone width: the four navigation boxes fit without sideways scrolling", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  const r = await page.evaluate(() => ["surahJump","ayahJump","juzJump","pageJump"].map(id => { const b = document.getElementById(id).getBoundingClientRect(); return [b.left, b.right, b.width]; }));
+  for (const [l, rr, w] of r) { assert.ok(l >= 0 && rr <= 360, "box outside screen"); assert.ok(w >= 60, "box too narrow: " + w); }
+}, { width: 360, height: 740 }));
+
+/* ---------- Highlight mode: tap to highlight without the menu ---------- */
+test("Highlight mode: a tap highlights the ayah straight away, with no menu; tapping again removes it", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#hlBtn");
+  assert.equal(await page.locator("#hlbar").isVisible(), true);
+  assert.equal(await page.locator('#hlColors .swatch.amber').getAttribute("aria-pressed"), "true", "amber is the default colour");
+  await page.click('.ayah[data-k="1:3"]');
+  await page.waitForSelector('.ayah[data-k="1:3"][data-hl="amber"]');
+  assert.equal(await page.locator("#sheet").isVisible(), false, "no menu in Highlight mode");
+  assert.equal(await page.locator('.trow[data-k="1:3"]').getAttribute("data-hl"), "amber", "translation row shows it too");
+  assert.equal(await page.locator("#markCount").textContent(), "1");
+  await page.click('.ayah[data-k="1:3"]');
+  await page.waitForFunction(() => !document.querySelector('.ayah[data-k="1:3"]').dataset.hl);
+  assert.equal(await page.locator("#markCount").textContent(), "0");
+}));
+
+test("Highlight mode: change colour, recolour an ayah, use the eraser; colours are kept after reload", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#hlBtn");
+  await page.click("#hlColors .swatch.blue");
+  await page.click('.ayah[data-k="1:2"]');
+  await page.click('.ayah[data-k="1:4"]');
+  await page.click("#hlColors .swatch.green");
+  await page.click('.ayah[data-k="1:4"]');           // recolour
+  await page.waitForSelector('.ayah[data-k="1:4"][data-hl="green"]');
+  await page.click('.trow[data-k="1:6"]');            // from the translation list too
+  await page.waitForSelector('.ayah[data-k="1:6"][data-hl="green"]');
+  await page.click("#hlColors .swatch.none");         // eraser
+  await page.click('.ayah[data-k="1:2"]');
+  await page.waitForFunction(() => !document.querySelector('.ayah[data-k="1:2"]').dataset.hl);
+  await page.reload(); await page.waitForSelector('.ayah[data-k="1:4"][data-hl="green"]', { timeout: 15000 });
+  assert.equal(await page.locator('.ayah[data-k="1:6"]').getAttribute("data-hl"), "green");
+  assert.equal(await page.locator('.ayah[data-k="1:2"]').getAttribute("data-hl"), null);
+  await page.click("#hlBtn");
+  assert.equal(await page.locator('#hlColors .swatch.none').getAttribute("aria-pressed"), "true", "chosen tool remembered");
+}));
+
+test("Highlight mode: press and hold opens the full menu; Done brings back normal taps", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#hlBtn");
+  const box = await page.locator('.ayah[data-k="1:5"]').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down(); await page.waitForTimeout(650); await page.mouse.up();
+  await page.waitForSelector("#sheet:not([hidden])");
+  assert.match(await page.locator("#sheet h3").textContent(), /1:5/);
+  assert.equal(await page.locator('.ayah[data-k="1:5"]').getAttribute("data-hl"), null, "holding doesn't also highlight");
+  await page.keyboard.press("Escape");
+  await page.click("#hlDone");
+  assert.equal(await page.locator("#hlbar").isVisible(), false);
+  await page.click('.ayah[data-k="1:5"]');
+  await page.waitForSelector("#sheet:not([hidden])");
+}));
+
+test("Highlight mode in IndoPak: one tap highlights every word of the ayah", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i42");
+  await page.waitForSelector('.ip .ayah[data-k="2:255"]', { timeout: 20000 });
+  await page.click("#hlBtn");
+  await page.click("#hlColors .swatch.rose");
+  const n = await page.locator('.ip .ayah[data-k="2:255"]').count();
+  await page.locator('.ip .ayah[data-k="2:255"]').nth(5).click();
+  await page.waitForFunction(n => document.querySelectorAll('.ip .ayah[data-k="2:255"][data-hl="rose"]').length === n, n);
+  assert.equal(await page.locator("#sheet").isVisible(), false);
+  const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+  assert.ok(sw <= cw);
+}, { width: 390, height: 844 }));
+
+test("Highlight mode: the colour bar doesn't cover the last line of the page on a phone", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i42");
+  await page.waitForSelector(".frame.ip .ipl", { timeout: 20000 });
+  await page.click("#hlBtn");
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const r = await page.evaluate(() => ({ folio: document.querySelector(".folio").getBoundingClientRect().bottom, bar: document.getElementById("hlbar").getBoundingClientRect().top }));
+  assert.ok(r.folio <= r.bar, "page bottom " + r.folio + " is under the bar at " + r.bar);
+}, { width: 390, height: 844 }));
+
 /* ---------- IndoPak edition (real bundled text and fonts) ---------- */
 import { readFileSync } from "node:fs";
 const IPDATA = JSON.parse(readFileSync(new URL("../data/indopak-15-lines.json", import.meta.url), "utf8"));
@@ -466,7 +595,7 @@ test("IndoPak: still readable when translations can't load", () => withPage({ te
   assert.match(await page.locator("#trans").textContent(), /translation didn't load/);
 }));
 
-test("IndoPak: settings show the IndoPak sample in its own font; text size is fixed to the page", () => withPage({}, async ({ page }) => {
+test("IndoPak: settings show the IndoPak sample in its own font", () => withPage({}, async ({ page }) => {
   await page.waitForSelector(READY, { timeout: 15000 });
   await page.click("#openSettings");
   const sample = page.locator('.seg button[data-script="indopak"] .sample');
@@ -474,7 +603,77 @@ test("IndoPak: settings show the IndoPak sample in its own font; text size is fi
   assert.equal(await sample.textContent(), ipWordsOn(1).filter(([l]) => /^1:1:[1-4]$/.test(l)).map(x => x[1]).join(" "));
   await page.locator('.seg button[data-script="indopak"]').click();
   await page.waitForSelector('.seg button[data-script="indopak"][aria-pressed="true"]', { timeout: 20000 });
-  assert.equal(await page.locator("#size").isDisabled(), true);
+  assert.equal(await page.locator("#ipsize").isEnabled(), true);
+}));
+
+const setIpSize = async (page, v) => {
+  await page.click("#openSettings");
+  await page.locator("#ipsize").fill(String(v));
+  await page.keyboard.press("Escape");
+};
+const wordsShown = page => page.$$eval(".ip .ayah", els => els.map(e => [e.dataset.k, e.textContent]));
+
+test("IndoPak text size: larger text wraps the same words, in the same order, without leaving the page", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i42");
+  await page.waitForSelector('.ip .ayah[data-k="2:255"]', { timeout: 20000 });
+  const before = await page.$eval(".ip .ayah", e => parseFloat(getComputedStyle(e).fontSize));
+  const src = ipWordsOn(42).map(([loc, t]) => [loc.split(":").slice(0, 2).join(":"), t]);
+  await setIpSize(page, 1.6);
+  await page.waitForSelector(".ipflow .ayah", { timeout: 10000 });
+  const after = await page.$eval(".ip .ayah", e => parseFloat(getComputedStyle(e).fontSize));
+  assert.ok(after > before * 1.5, "text got larger: " + before + " → " + after);
+  assert.deepEqual(await wordsShown(page), src, "same words, same order");
+  const out = await page.evaluate(() => { const b = document.querySelector(".frame.ip .body").getBoundingClientRect();
+    return [...document.querySelectorAll(".ip .ayah")].filter(w => { const r = w.getBoundingClientRect(); return r.left < b.left - 1 || r.right > b.right + 1; }).length; });
+  assert.equal(out, 0, "no word outside the page");
+  const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+  assert.ok(sw <= cw, "page scrolls sideways");
+}, { width: 390, height: 844 }));
+
+test("IndoPak text size: remembered after reload; smallest setting brings back the printed 15 lines", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i42");
+  await page.waitForSelector('.ip .ayah[data-k="2:255"]', { timeout: 20000 });
+  await setIpSize(page, 1.4);
+  await page.waitForSelector(".ipflow .ayah");
+  await page.reload();
+  await page.waitForSelector(".ipflow .ayah", { timeout: 20000 });
+  await page.click("#openSettings");
+  assert.equal(await page.locator("#ipsize").inputValue(), "1.4");
+  assert.match(await page.locator("#ipsizeNote").textContent(), /lines wrap/);
+  await page.locator("#ipsize").fill("1");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelectorAll(".ipl").length === 15 && !document.querySelector(".ipflow"));
+  const perLine = await page.$$eval(".ipl", ls => ls.map(l => l.querySelectorAll(".ayah").length));
+  assert.deepEqual(perLine, IPDATA[41].map(l => l.t === "w" ? l.w.length : 0));
+}));
+
+test("IndoPak text size: surah headers, Bismillah, highlights and recitation still work in larger text", () => withPage({ audio: "ok" }, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i604");
+  await page.waitForSelector(".frame.ip .ipl.ips", { timeout: 20000 });
+  const heads = await page.locator(".ipl.ips").count();
+  await setIpSize(page, 1.8);
+  await page.waitForSelector(".ipflow .ayah");
+  assert.equal(await page.locator(".ipl.ips").count(), heads);
+  assert.equal(await page.locator(".ipflow.ipb").count(), IPDATA[603].filter(l => l.t === "b").length);
+  await page.locator('.ip .ayah[data-k="97:1"]').first().click();
+  await page.locator("#sheet .swatch.rose").click();
+  await page.waitForSelector('.ip .ayah[data-hl="rose"][data-k="97:1"]');
+  await page.keyboard.press("Escape");
+  await page.locator('.ip .ayah[data-k="97:1"]').first().click();
+  await page.locator("#sheet button", { hasText: "Play from here" }).click();
+  await page.waitForSelector('.ip .ayah.playing[data-k="97:2"]', { timeout: 10000 });
+}));
+
+test("Madani text size slider still works and doesn't change IndoPak's", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.click("#openSettings");
+  await page.locator("#size").fill("2.4");
+  const fs = await page.$eval(".ayah", e => getComputedStyle(e).fontSize);
+  assert.equal(fs, (2.4 * 16) + "px");
+  await page.locator('.seg button[data-script="indopak"]').click();
+  await page.waitForSelector("#ipsize", { timeout: 20000 });
+  assert.equal(await page.locator("#ipsize").inputValue(), "1");
+  assert.equal(await page.locator("#size").count(), 0);
 }));
 
 test("IndoPak: reopens offline after it has been read once", () => withPage({ sw: true }, async ({ page, context }) => {

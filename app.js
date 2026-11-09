@@ -48,13 +48,13 @@ const store = {
 };
 const S = {
   page: store.get("page",1), script: store.get("script","amiriq"), size: store.get("size",1.75),
-  trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
+  hlColor: store.get("hlColor","amber"), ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
   bookmarks: store.get("bookmarks",[]), highlights: store.get("highlights",{}), sel:null
 };
 if(!SCRIPTS.some(x=>x.id===S.script)) S.script="amiriq";
 if(!TRANSLATIONS.some(x=>x.id===S.trans)) S.trans="en";
 if(!RECITERS.some(x=>x.id===S.reciter)) S.reciter="Alafasy_128kbps";
-const save = () => ["page","script","size","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
+const save = () => ["page","script","size","hlColor","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
 
 /* ---------- data ---------- */
 // On its own site the app can download the JSON files directly (they are served with CORS).
@@ -269,7 +269,9 @@ async function renderPage(){
   $("where").textContent = "Page "+p+" of "+COUNT+" · Juz "+PAGE_JUZ[p];
   $("nextBtn").disabled = p>=COUNT; $("prevBtn").disabled = p<=1;
   $("pageJump").max = COUNT;
-  $("surahJump").value = surahs[0] || 1; $("juzJump").value = PAGE_JUZ[p]; $("pageJump").value = p;
+  if(!surahs.includes(+$("surahJump").value)){ $("surahJump").value = surahs[0] || 1; $("ayahJump").value = ""; }
+  $("ayahJump").max = SURAH_N[(+$("surahJump").value || 1) - 1];
+  $("juzJump").value = PAGE_JUZ[p]; $("pageJump").value = p;
   try{ history.replaceState(null,"",(ip?"#i":"#p")+p) }catch(e){}
 
   // Madani pages need the Uthmani text; IndoPak pages need it only for translations
@@ -330,15 +332,49 @@ function layoutIndopak(body, p){
   const W = body.clientWidth * 0.985;   // small margin so waqf signs above the line ends stay inside the frame
   const F = W / IP_REF * 0.96, LH = F * 1.72;
   body.style.setProperty("--ipf", F+"px"); body.style.setProperty("--iplh", LH+"px");
-  body.dataset.w = W;
+  body.dataset.w = body.clientWidth;
   const ayahLen = k => IP.ayahWords[k].length;
+  const wordSpan = (s,a,wn,txt,first) => {
+    const k = key(s,a), sp = el("span",{class:"ayah w","data-k":k});
+    if(first){ sp.tabIndex = 0; sp.setAttribute("role","button"); sp.setAttribute("aria-label",INDEX[s-1].transliteration+" "+s+":"+a); }
+    if(wn===ayahLen(k)) sp.classList.add("endw");
+    if(S.bookmarks.includes(k)) sp.classList.add("bm");
+    if(S.highlights[k]) sp.dataset.hl = S.highlights[k];
+    if(S.sel===k) sp.classList.add("sel");
+    if(P.cur===k) sp.classList.add("playing");
+    sp.textContent = txt;
+    return sp;
+  };
+  const surahHead = s => {
+    const info = INDEX[s-1], sh = el("div",{class:"surah-head"});
+    sh.append(el("span",{class:"meta"}, info.type==="medinan"?"مدنية":"مكية"), el("span",{class:"nm"},"سورة "+info.name), el("span",{class:"meta"},"آياتها "+AR(info.total_verses)));
+    return sh;
+  };
+
+  // Larger text: the same words in the same order, wrapping onto as many lines as they need
+  if(S.ipScale > 1.001){
+    body.classList.add("ipflow-on");
+    body.style.setProperty("--ipf", (F*S.ipScale)+"px");
+    let para = null, prevK = null;
+    for(const ln of IP.lines[p-1]){
+      if(ln.t==="s"){ para = null; const d = el("div",{class:"ipl ips"}); d.append(surahHead(ln.s)); body.append(d); continue; }
+      if(ln.t==="b"){ para = null; const d = el("div",{class:"ipflow ipb"}); IP.bismillah.forEach((w,i)=>{ if(i) d.append(" "); d.append(el("span",{class:"w"},w)); }); body.append(d); continue; }
+      if(ln.t!=="w") continue;
+      if(!para){ para = el("p",{class:"ipflow"}); body.append(para); }
+      for(const [loc,txt] of ln.w){
+        const [s,a,wn] = loc.split(":").map(Number), k = key(s,a);
+        if(para.childNodes.length) para.append(" ");
+        para.append(wordSpan(s,a,wn,txt,k!==prevK)); prevK = k;
+      }
+    }
+    return;
+  }
+
   for(const ln of IP.lines[p-1]){
     const d = el("div",{class:"ipl"});
     if(ln.t==="s"){
       d.classList.add("ips");
-      const info = INDEX[ln.s-1], sh = el("div",{class:"surah-head"});
-      sh.append(el("span",{class:"meta"}, info.type==="medinan"?"مدنية":"مكية"), el("span",{class:"nm"},"سورة "+info.name), el("span",{class:"meta"},"آياتها "+AR(info.total_verses)));
-      d.append(sh);
+      d.append(surahHead(ln.s));
     } else if(ln.t==="b"){
       d.classList.add("ipc","ipb");
       for(const w of IP.bismillah) d.append(el("span",{class:"w"}, w));
@@ -353,15 +389,7 @@ function layoutIndopak(body, p){
       let prevK = null;
       for(const [loc,txt] of ln.w){
         const [s,a,wn] = loc.split(":").map(Number), k = key(s,a);
-        const sp = el("span",{class:"ayah w","data-k":k});
-        if(k!==prevK){ sp.tabIndex = 0; sp.setAttribute("role","button"); sp.setAttribute("aria-label",INDEX[s-1].transliteration+" "+s+":"+a); }
-        if(wn===ayahLen(k)) sp.classList.add("endw");
-        if(S.bookmarks.includes(k)) sp.classList.add("bm");
-        if(S.highlights[k]) sp.dataset.hl = S.highlights[k];
-        if(S.sel===k) sp.classList.add("sel");
-        if(P.cur===k) sp.classList.add("playing");
-        sp.textContent = txt;
-        d.append(sp); prevK = k;
+        d.append(wordSpan(s,a,wn,txt,k!==prevK)); prevK = k;
       }
     }
     body.append(d);
@@ -378,6 +406,7 @@ function renderTrans(list, bySurah, err){
   for(const [s,a] of list){
     const v = verse(bySurah[s],a), k = key(s,a);
     const row = el("div",{class:"trow"+(P.cur===k?" playing":""),"data-k":k,role:"button",tabindex:"0"});
+    if(S.highlights[k]) row.dataset.hl = S.highlights[k];
     const d = el("div");
     if(S.translit && v.transliteration) d.append(el("p",{class:"tl"},v.transliteration));
     if(S.trans!=="none" && v.translation) d.append(el("p", T.rtl?{dir:"rtl"}:{}, v.translation));
@@ -506,9 +535,19 @@ function settingsSheet(){
   f1.append(seg); nodes.push(f1);
 
   const f2 = el("div",{class:"field"}); f2.append(el("label",{class:"lbl",for:"size"},"Text size"));
-  const r = el("input",{type:"range",id:"size",min:"1.2",max:"2.8",step:"0.05",value:String(S.size)});
-  r.oninput = ()=>{ S.size=+r.value; applyStyle(); save(); }; f2.append(r);
-  if(isIP()){ r.disabled = true; f2.append(el("span",{class:"cap"},"IndoPak pages fit the screen width, like a printed page. Turn your phone sideways for larger text.")); }
+  if(isIP()){
+    f2.firstChild.setAttribute("for","ipsize");
+    const r = el("input",{type:"range",id:"ipsize",min:"1",max:"2.2",step:"0.05",value:String(S.ipScale)});
+    const cap = el("span",{class:"cap",id:"ipsizeNote"});
+    const note = ()=>{ cap.textContent = S.ipScale > 1.001
+      ? "Larger text: lines wrap to fit your screen. Move the slider all the way left to see the printed 15-line page."
+      : "Printed page: the 15 lines match the Taj Mushaf. Move the slider right for larger text."; };
+    let t; r.oninput = ()=>{ S.ipScale = +r.value; save(); note(); clearTimeout(t); t = setTimeout(renderPage, 60); };
+    note(); f2.append(r, cap);
+  } else {
+    const r = el("input",{type:"range",id:"size",min:"1.2",max:"2.8",step:"0.05",value:String(S.size)});
+    r.oninput = ()=>{ S.size=+r.value; applyStyle(); save(); }; f2.append(r);
+  }
   nodes.push(f2);
 
   const f3 = el("div",{class:"field"}); f3.append(el("label",{class:"lbl",for:"transSel"},"Translation"));
@@ -576,11 +615,54 @@ function marksSheet(){
 let tt; function toast(m){ const t=$("toast"); t.textContent=m; t.hidden=false; clearTimeout(tt); tt=setTimeout(()=>t.hidden=true,2000); }
 
 /* ---------- events ---------- */
-const pick = e=>{ const x=e.target.closest("[data-k]"); if(x) ayahSheet(x.dataset.k); };
-$("page").addEventListener("click",pick); $("trans").addEventListener("click",pick);
+/* ---------- tapping ayat: menu, or quick highlighting in Highlight mode ---------- */
+let hlMode = false;
+function setHlMode(on){
+  hlMode = on; $("hlbar").hidden = !on; document.body.classList.toggle("hl-on", on);
+  $("hlBtn").setAttribute("aria-pressed", String(on));
+  if(on) updateHlBar();
+}
+function updateHlBar(){
+  document.querySelectorAll("#hlColors .swatch").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.c===S.hlColor)));
+}
+// apply one ayah's highlight to everything showing it, without redrawing the page
+function paintHl(k){
+  document.querySelectorAll('[data-k="'+k+'"]').forEach(x=>{ if(S.highlights[k]) x.dataset.hl = S.highlights[k]; else delete x.dataset.hl; });
+}
+function quickHighlight(k){
+  const c = S.hlColor, had = S.highlights[k];
+  if(!c || had===c) delete S.highlights[k]; else S.highlights[k] = c;
+  if(had===S.highlights[k]) return;
+  save(); updateCount(); paintHl(k);
+}
+function tapAyah(k){ if(hlMode) quickHighlight(k); else ayahSheet(k); }
+
+let holdT = null, held = false;
+const holdStart = e=>{
+  const x = e.target.closest("[data-k]"); held = false; clearTimeout(holdT);
+  if(!x || !hlMode) return;
+  holdT = setTimeout(()=>{ held = true; ayahSheet(x.dataset.k); }, 500);   // press and hold: full menu
+};
+const holdEnd = ()=>clearTimeout(holdT);
+const pick = e=>{
+  const x = e.target.closest("[data-k]"); if(!x) return;
+  if(held){ held = false; return; }       // the hold already opened the menu
+  tapAyah(x.dataset.k);
+};
+for(const id of ["page","trans"]){
+  const box = $(id);
+  box.addEventListener("click",pick);
+  box.addEventListener("pointerdown",holdStart);
+  for(const ev of ["pointerup","pointerleave","pointercancel","scroll"]) box.addEventListener(ev,holdEnd,{passive:true});
+  box.addEventListener("contextmenu",e=>{ const x=e.target.closest("[data-k]"); if(x && hlMode){ e.preventDefault(); clearTimeout(holdT); if(!held) ayahSheet(x.dataset.k); held = false; } });
+}
+window.addEventListener("scroll",holdEnd,{passive:true});
+$("hlBtn").onclick = ()=>setHlMode(!hlMode);
+$("hlDone").onclick = ()=>setHlMode(false);
+$("hlColors").onclick = e=>{ const b = e.target.closest(".swatch"); if(!b) return; S.hlColor = b.dataset.c; save(); updateHlBar(); };
 document.addEventListener("keydown",e=>{
   if(e.key==="Escape" && !$("sheet").hidden) return closeSheet();
-  if((e.key==="Enter"||e.key===" ") && e.target.dataset && e.target.dataset.k){ e.preventDefault(); return ayahSheet(e.target.dataset.k); }
+  if((e.key==="Enter"||e.key===" ") && e.target.dataset && e.target.dataset.k){ e.preventDefault(); return tapAyah(e.target.dataset.k); }
   if(!$("sheet").hidden || /INPUT|SELECT/.test(e.target.tagName)) return;
   if(e.key==="ArrowLeft") go(S.page+1);
   if(e.key==="ArrowRight") go(S.page-1);
@@ -589,7 +671,23 @@ $("nextBtn").onclick=()=>go(S.page+1); $("prevBtn").onclick=()=>go(S.page-1);
 $("openSettings").onclick=settingsSheet; $("openMarks").onclick=marksSheet; $("scrim").onclick=closeSheet;
 $("playBtn").onclick=togglePlay;
 $("reciterBtn").onclick=()=>openSheet([el("h3",{},"Recitation"), reciterField(), el("p",{class:"empty"},"Recitation plays ayah by ayah and turns the page as it goes.")]);
-$("surahJump").onchange=e=>go(SURAH_START[+e.target.value]);
+$("surahJump").onchange=e=>{ const s=+e.target.value; $("ayahJump").value=""; $("ayahJump").max=SURAH_N[s-1]; go(SURAH_START[s]); };
+// Go to an ayah of the chosen surah: open its page and briefly mark it
+function goToAyah(s, a){
+  a = Math.max(1, Math.min(SURAH_N[s-1], a|0 || 1));
+  const k = key(s,a);
+  $("surahJump").value = s; $("ayahJump").value = a;
+  const mark = ()=>{
+    const els = document.querySelectorAll('.ayah[data-k="'+k+'"]'); if(!els.length) return false;
+    els[0].scrollIntoView({block:"center",behavior:"smooth"});
+    els.forEach(x=>x.classList.add("flash")); setTimeout(()=>els.forEach(x=>x.classList.remove("flash")), 1800);
+    return true;
+  };
+  if(pageHas(S.page,k)) mark();
+  else { go(AYAH_PAGE[k]); let n=0; const t=setInterval(()=>{ if(mark() || ++n>40) clearInterval(t); },50); }
+}
+$("ayahJump").onchange=e=>{ if(e.target.value!=="") goToAyah(+$("surahJump").value, +e.target.value); };
+$("ayahJump").onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); e.target.blur(); } };
 $("juzJump").onchange=e=>go(JUZ_START[+e.target.value]);
 $("pageJump").onchange=e=>go(+e.target.value);
 let sx=null,sy=null;

@@ -43,7 +43,7 @@ button{cursor:pointer}
 .icon-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8}
 .count{background:var(--frame);color:var(--paper);border-radius:999px;font-size:.7rem;padding:0 6px;min-width:18px;text-align:center}
 
-.jump{display:grid;grid-template-columns:1fr 92px 84px;gap:8px}
+.jump{display:grid;grid-template-columns:1fr 76px 92px 84px;gap:8px}
 .jump select,.jump input{min-width:0;height:38px;border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:0 8px;width:100%}
 .jump input{font-variant-numeric:tabular-nums;text-align:center}
 
@@ -94,6 +94,11 @@ button{cursor:pointer}
 .ip .ayah[data-hl="green"]{background:var(--hl-green)}
 .ip .ayah[data-hl="blue"]{background:var(--hl-blue)}
 .ip .ayah[data-hl="rose"]{background:var(--hl-rose)}
+/* IndoPak larger text: words wrap freely instead of the printed 15 lines */
+.ipflow-on{gap:.35em}
+.ipflow{margin:0;direction:rtl;text-align:justify;text-align-last:right;font-family:"IP Normal",serif;font-size:var(--ipf);line-height:2.15;color:var(--ink);overflow-wrap:normal}
+.ipflow.ipb{text-align:center;text-align-last:center}
+.ipflow-on .ipl.ips{height:auto;padding-block:.3em}
 .sheet .ar.ipar{font-family:"IP Normal",serif;font-size:1.7rem;line-height:2.2}
 .folio{text-align:center;font-family:var(--f-ar-ui);color:var(--frame);font-size:1.05rem;margin-top:8px;padding-top:6px;border-top:1px solid var(--line)}
 .ribbon{position:absolute;top:0;left:22px;width:16px;height:34px;background:var(--gilt);clip-path:polygon(0 0,100% 0,100% 100%,50% 75%,0 100%)}
@@ -122,6 +127,17 @@ button{cursor:pointer}
 .note{font-size:.78rem;color:var(--muted);border-top:1px dashed var(--line);padding-top:10px;margin:0}
 
 /* player */
+/* Highlight mode: colour bar above the player */
+.hlbar{position:fixed;left:0;right:0;bottom:calc(62px + env(safe-area-inset-bottom,0px));z-index:16;background:var(--paper);border-top:1px solid var(--line);box-shadow:0 -6px 18px -10px rgba(0,0,0,.3);
+  padding-block:8px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.hlbar-in{max-width:600px;margin:0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hlhint{font-size:.8rem;color:var(--muted);flex:1 1 100%}
+.hlbar .row{flex:1;gap:10px}
+.hlbar .swatch[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 2px var(--paper),0 0 0 4px var(--frame)}
+body.hl-on .app{padding-bottom:180px}
+#hlBtn[aria-pressed="true"]{background:var(--frame);border-color:var(--frame);color:var(--paper)}
+.trow[data-hl="amber"]{background:var(--hl-amber)} .trow[data-hl="green"]{background:var(--hl-green)}
+.trow[data-hl="blue"]{background:var(--hl-blue)} .trow[data-hl="rose"]{background:var(--hl-rose)}
 .player{position:fixed;left:0;right:0;bottom:0;z-index:15;background:var(--paper);border-top:1px solid var(--line);
   padding-top:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
@@ -174,6 +190,9 @@ input[type=range]{width:100%;accent-color:var(--frame)}
 .bm-item .pg{font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
 .empty{color:var(--muted);font-size:.9rem;padding:8px 0;margin:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);padding:8px 14px;border-radius:999px;font-size:.85rem;z-index:30;max-width:90vw;text-align:center}
-@media (max-width:420px){.jump{grid-template-columns:1fr 1fr}.jump select:first-child{grid-column:1/-1}
+@media (max-width:420px){.jump{grid-template-columns:1fr 1fr 1fr}.jump select:first-child{grid-column:1/-1}
   .bar{gap:6px}.icon-btn{padding:0 11px}.icon-btn .txt{display:none}.brand small{display:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* go-to-ayah: briefly mark the ayah you jumped to (after the highlight rules so it shows on top) */
+.ayah.flash,.ip .ayah.flash{background:var(--play);box-shadow:0 0 0 1.5px var(--gilt)}

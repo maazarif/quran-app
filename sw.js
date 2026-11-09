@@ -1,5 +1,5 @@
 // Service worker: makes the app installable and lets pages you've opened work offline.
-const VERSION = "mushaf-v3";
+const VERSION = "mushaf-v4";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png"];
 
