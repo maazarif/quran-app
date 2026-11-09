@@ -1,0 +1,14 @@
+{
+  "name": "mushaf-reader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Installable Quran reader on Madani Mushaf pages with translations, recitation, bookmarks and highlights.",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node tests/reader.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.49.1"
+  }
+}

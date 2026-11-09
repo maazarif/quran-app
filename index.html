@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mushaf Reader</title>
+<meta name="description" content="Read the Quran on Madani Mushaf pages with translations, recitation, bookmarks and highlights.">
+<meta name="theme-color" content="#1f5a4b" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c1311" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mushaf">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Scheherazade+New:wght@400;700&family=Noto+Naskh+Arabic:wght@400;600&family=Figtree:wght@400;500;600&display=swap">
+<style>
+  :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  html,body{margin:0}
+  img{max-width:100%}
+  [hidden]{display:none!important}
+</style>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand">المصحف <small>Reader</small></div>
+    <button class="icon-btn" id="installBtn" aria-label="Install the app" hidden>
+      <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg><span class="txt">Install</span>
+    </button>
+    <button class="icon-btn" id="openMarks" aria-label="Saved ayat">
+      <svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span class="txt">Saved</span> <span class="count" id="markCount">0</span>
+    </button>
+    <button class="icon-btn" id="openSettings" aria-label="Reading settings">Aa</button>
+  </header>
+
+  <div class="jump">
+    <select id="surahJump" aria-label="Go to surah"><option>Loading surahs…</option></select>
+    <select id="juzJump" aria-label="Go to juz"></select>
+    <input id="pageJump" type="number" min="1" max="604" inputmode="numeric" aria-label="Go to page" placeholder="Page">
+  </div>
+
+  <article class="page" id="page"><div class="frame"><div class="state"><div class="sk"><i></i><i></i><i></i><i></i><i></i><i></i></div>Loading the Mushaf text…</div></div></article>
+
+  <nav class="turner" aria-label="Page navigation">
+    <button id="nextBtn">‹ Next page</button>
+    <div class="where" id="where"></div>
+    <button id="prevBtn">Previous ›</button>
+  </nav>
+
+  <section class="trans" id="trans" hidden></section>
+
+  <p class="note" id="srcNote">Arabic text: Uthmani script from The Noble Qur'an Encyclopedia (King Fahd Glorious Qur'an Printing Complex), shown exactly as published. Page boundaries follow the 604-page Madani Mushaf. Recitation audio from EveryAyah. Pages you open are kept for offline reading.</p>
+</div>
+
+<div class="player" id="player">
+  <div class="player-in">
+    <button class="pbtn" id="playBtn" aria-label="Play recitation"><svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4l13 8-13 8z"/></svg></button>
+    <div class="pinfo"><b id="pTitle">Recitation</b><span id="pSub">Tap play to hear this page</span></div>
+    <button class="ghost" id="reciterBtn">Reciter</button>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" hidden><div class="sheet-inner" id="sheetInner"></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

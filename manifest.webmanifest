@@ -1,0 +1,20 @@
+{
+  "name": "Mushaf Reader",
+  "short_name": "Mushaf",
+  "description": "Read the Quran on Madani Mushaf pages with translations, recitation, bookmarks and highlights.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#e3e8e2",
+  "theme_color": "#1f5a4b",
+  "lang": "en",
+  "dir": "auto",
+  "categories": ["books", "education", "lifestyle"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
