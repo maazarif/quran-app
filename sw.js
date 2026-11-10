@@ -1,7 +1,9 @@
 // Service worker: makes the app installable and lets pages you've opened work offline.
-const VERSION = "mushaf-v10";
+const VERSION = "mushaf-v11";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest",
-  "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png"];
+  "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png",
+  // the default Mushaf font and the interface fonts, so the text draws correctly the first time the app opens offline
+  "fonts/quran/amiri-quran.woff", "fonts/quran/amiri-regular.woff", "fonts/quran/amiri-bold.woff", "fonts/quran/figtree.woff"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -12,9 +14,9 @@ self.addEventListener("activate", e => {
     .then(() => self.clients.claim()));
 });
 
-// Quran text, layout library and font files come from version-pinned URLs that never change,
+// The layout library and translations come from version-pinned URLs that never change,
 // so once fetched they are served from the cache.
-const IMMUTABLE = url => url.hostname === "cdn.jsdelivr.net" || url.hostname === "fonts.gstatic.com";
+const IMMUTABLE = url => url.hostname === "cdn.jsdelivr.net";
 
 self.addEventListener("fetch", e => {
   const req = e.request;
@@ -37,7 +39,7 @@ self.addEventListener("fetch", e => {
     })));
     return;
   }
-  // app files and the fonts stylesheet: latest version when online, saved copy when offline
+  // app files: latest version when online, saved copy when offline
   e.respondWith(fetch(req).then(res => { if (res.ok) put(VERSION, req, res.clone()); return res; })
     .catch(() => caches.match(req)));
 });

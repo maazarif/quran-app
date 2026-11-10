@@ -26,6 +26,11 @@ IndoPak Nastaleeq (Hanafi, with waqf lazim), normal / compact / compressed width
 
 Checksums are in SOURCES.sha256. The text, layout and fonts belong to their projects (Tarteel QUL, Quran.com); check their terms before distributing the app widely.
 
+## fonts/quran/*.woff
+Mushaf and interface fonts, bundled so the text always draws with a font that has every Quranic character (a missing font made the browser fall back to one that drops marks such as the wasla on ٱ).
+- From github.com/google/fonts at commit 5bb28733cec313b63fbd415b574b5ae35c8aa8b8: `ofl/amiriquran`, `ofl/amiri`, `ofl/scheherazadenew`, `ofl/notonaskharabic`, `ofl/figtree`. Licence: SIL Open Font Licence 1.1 (copies in `fonts/quran/OFL-*.txt`).
+- The Arabic fonts are repackaged as WOFF with no glyphs removed. Checked here: Amiri Quran, Amiri, Scheherazade New and Noto Naskh Arabic each have a glyph for all 72 characters used in `data/uthmani-hafs.json`. Figtree (interface text only) is cut down to Latin characters.
+
 ## data/timings/*.json
 Ayah start and end times inside each reciter's full-surah recordings, so a whole surah plays as one continuous recording (which keeps playing when the phone is locked) while the app follows each ayah.
 - Source: quranic-universal-audio v4.0.0 by QUD Technologies (https://github.com/QUD-Technologies/quranic-universal-audio/releases/tag/v4.0.0), licence CC BY 4.0. Timing made by forced alignment of the recordings.

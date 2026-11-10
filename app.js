@@ -349,6 +349,8 @@ async function renderPage(){
   const p = S.page, list = PAGES[p] || [];
   const surahs = [...new Set(list.map(x=>x[0]))];
   $("where").textContent = "Page "+p+" of "+COUNT+" · Juz "+PAGE_JUZ[p];
+  drawTrack(p);
+  $("page").dataset.side = p%2 ? "r" : "l"; // odd pages sit on the right of an open Mushaf, so their spine is on the left
   $("nextBtn").disabled = p>=COUNT; $("prevBtn").disabled = p<=1;
   $("pageJump").max = COUNT;
   if(!surahs.includes(+$("surahJump").value)){ $("surahJump").value = surahs[0] || 1; $("ayahJump").value = ""; }
@@ -531,11 +533,20 @@ function fillJumps(){
 
 function updateCount(){ $("markCount").textContent = new Set([...S.bookmarks,...Object.keys(S.highlights)]).size; }
 let READY = false; // page map loaded
+/* The journey track under the page: where this page sits in the whole Mushaf, with a tick at each juz.
+   The Mushaf runs right to left, so page 1 is at the right end. Tapping the track opens that part. */
+function drawTrack(p){
+  const t = $("track"), marks = t.querySelector("b"), ed = COUNT+":"+JUZ_START[30];
+  t.style.setProperty("--pos", COUNT>1 ? (p-1)/(COUNT-1) : 0);
+  if(marks.dataset.ed === ed) return;
+  marks.dataset.ed = ed; marks.replaceChildren();
+  for(let j=2;j<=30;j++) if(JUZ_START[j]) { const m = el("span"); m.style.right = ((JUZ_START[j]-1)/(COUNT-1)*100)+"%"; marks.append(m); }
+}
 function go(p, keepAudio){
   p = Math.max(1, Math.min(COUNT, p|0));
   if(!READY){ S.page = p; save(); return; } // remembered; the first render shows it
   if(p===S.page && !keepAudio) return;
-  if(p!==S.page) anchorKey = null;
+  if(p!==S.page) { anchorKey = null; $("page").dataset.turn = p>S.page ? "fwd" : "back"; }
   S.page = p; S.sel = null; save(); renderPage(); if(!keepAudio) window.scrollTo({top:0,behavior:"smooth"});
 }
 
@@ -721,6 +732,7 @@ function updatePlayer(){
   const rec = RECITERS.find(r=>r.id===S.reciter);
   $("playIcon").innerHTML = P.playing ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4l13 8-13 8z"/>';
   $("playBtn").setAttribute("aria-label", P.playing ? "Pause recitation" : "Play recitation");
+  $("player").classList.toggle("on", !!P.playing);
   const sub = $("pSub"); sub.replaceChildren();
   if(P.cur){
     const [s,a] = P.cur.split(":").map(Number);
@@ -1016,6 +1028,8 @@ document.addEventListener("keydown",e=>{
   if(e.key==="ArrowRight") go(S.page-1);
 });
 $("nextBtn").onclick=()=>go(S.page+1); $("prevBtn").onclick=()=>go(S.page-1);
+$("track").onclick=e=>{ const r = e.currentTarget.getBoundingClientRect(); go(1 + Math.round((r.right - e.clientX) / r.width * (COUNT-1))); };
+$("page").addEventListener("animationend", e => { if(e.target.classList.contains("frame")) delete $("page").dataset.turn; });
 $("openSettings").onclick=settingsSheet; $("openMarks").onclick=marksSheet; $("scrim").onclick=closeSheet;
 $("playBtn").onclick=togglePlay;
 $("reciterBtn").onclick=()=>openSheet([el("h3",{},"Recitation"), reciterField(), el("p",{class:"empty"},"Recitation follows each ayah and turns the page as it goes. It keeps playing with the screen locked, in other apps and in the car.")]);

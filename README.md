@@ -46,7 +46,7 @@ The Quran text is never typed or edited by hand. It is bundled from the sources 
 | Page and juz layout (604-page Madani Mushaf, Hafs) | `quran-meta` package on jsDelivr | 6.0.17 (pinned) |
 | Recitation audio | Whole-surah recordings from MP3Quran, Tarteel and QuranicAudio (one continuous recording per surah, so it keeps playing with the screen locked); EveryAyah.com per-ayah files as a fallback | — |
 | Ayah timings inside each surah recording | quranic-universal-audio v4.0.0 by QUD Technologies, CC BY 4.0; bundled in `data/timings/` (see `data/SOURCES.md`) | fixed copy |
-| Fonts | Amiri Quran, Scheherazade New, Amiri, Noto Naskh Arabic (Google Fonts) | — |
+| Fonts | Amiri Quran, Amiri, Scheherazade New, Noto Naskh Arabic, Figtree (SIL Open Font Licence), bundled in `fonts/quran/` from the Google Fonts repository; each Arabic font has a glyph for every character of the Quran text | fixed copy |
 
 Several translations are copyrighted. Check each translation's terms before publishing the app widely.
 
@@ -65,7 +65,8 @@ npm test
 | File | Purpose |
 |---|---|
 | `index.html` | Page structure |
-| `styles.css` | Mushaf page design, light and dark themes |
+| `styles.css` | Mushaf page design, light and dark themes, page colours |
+| `fonts/` | Bundled Mushaf and interface fonts, with their licences |
 | `app.js` | Loading, page rendering, translations, recitation, bookmarks, highlights |
 | `sw.js` | Service worker: offline reading and caching |
 | `manifest.webmanifest`, `icons/` | Home-screen install |

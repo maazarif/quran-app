@@ -14,10 +14,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Mushaf">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Scheherazade+New:wght@400;700&family=Noto+Naskh+Arabic:wght@400;600&family=Figtree:wght@400;500;600&display=swap">
+<link rel="preload" href="fonts/quran/amiri-quran.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="fonts/quran/figtree.woff" as="font" type="font/woff" crossorigin>
 <style>
   :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
   html,body{margin:0}
@@ -29,7 +28,7 @@
 <body>
 <div class="app">
   <header class="bar">
-    <div class="brand">المصحف <small>Reader</small></div>
+    <div class="brand"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="7" width="18" height="18" rx="1.5"/><rect x="7" y="7" width="18" height="18" rx="1.5" transform="rotate(45 16 16)"/><circle cx="16" cy="16" r="5.2"/><circle cx="16" cy="16" r="2.2"/></svg><span class="ar">المصحف</span> <small>Reader</small></div>
     <button class="icon-btn" id="installBtn" aria-label="Install the app" hidden>
       <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg><span class="txt">Install</span>
     </button>
@@ -44,19 +43,22 @@
     </button>
   </header>
 
-  <div class="jump">
-    <select id="surahJump" aria-label="Go to surah"><option>Loading surahs…</option></select>
-    <input id="ayahJump" type="number" min="1" inputmode="numeric" aria-label="Go to ayah" placeholder="Ayah">
-    <select id="juzJump" aria-label="Go to juz"></select>
-    <input id="pageJump" type="number" min="1" max="604" inputmode="numeric" aria-label="Go to page" placeholder="Page">
+  <div class="jump" role="group" aria-label="Go to">
+    <label class="fld f-surah"><span>Surah</span><select id="surahJump" aria-label="Go to surah"><option>Loading surahs…</option></select></label>
+    <label class="fld"><span>Ayah</span><input id="ayahJump" type="number" min="1" inputmode="numeric" aria-label="Go to ayah" placeholder="–"></label>
+    <label class="fld"><span>Juz</span><select id="juzJump" aria-label="Go to juz"></select></label>
+    <label class="fld"><span>Page</span><input id="pageJump" type="number" min="1" max="604" inputmode="numeric" aria-label="Go to page" placeholder="–"></label>
   </div>
 
   <article class="page" id="page"><div class="frame"><div class="state"><div class="sk"><i></i><i></i><i></i><i></i><i></i><i></i></div>Loading the Mushaf text…</div></div></article>
 
   <nav class="turner" aria-label="Page navigation">
-    <button id="nextBtn">‹ Next page</button>
-    <div class="where" id="where"></div>
-    <button id="prevBtn">Previous ›</button>
+    <button id="nextBtn" aria-label="Next page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg><span>Next</span></button>
+    <div class="mid">
+      <div class="where" id="where"></div>
+      <div class="track" id="track" title="Your place in the Mushaf (tap to jump)"><i></i><b></b></div>
+    </div>
+    <button id="prevBtn" aria-label="Previous page"><span>Previous</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6"/></svg></button>
   </nav>
 
   <section class="trans" id="trans" hidden></section>

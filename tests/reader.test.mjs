@@ -1419,4 +1419,42 @@ test("Settings button shows a gear and the word Settings; Done closes the settin
   assert.equal(await page.locator("#sheet").isHidden(), true);
 }, { width: 390, height: 844 }));
 
+/* ---------- design: bundled fonts, journey track, page turns ---------- */
+test("Mushaf fonts are bundled: the page draws in Amiri Quran without contacting Google Fonts", () => withPage({}, async ({ page }) => {
+  const outside = []; page.on("request", r => { if (/fonts\.(googleapis|gstatic)\.com/.test(r.url())) outside.push(r.url()); });
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.evaluate(() => document.fonts.ready);
+  assert.equal(await page.evaluate(() => document.fonts.check('28px "Amiri Quran"', "ٱ")), true, "Amiri Quran loaded");
+  const loaded = await page.evaluate(() => [...document.fonts].filter(f => f.status === "loaded").map(f => f.family.replace(/"/g, "")));
+  assert.ok(loaded.includes("Amiri Quran") && loaded.includes("Figtree"), loaded.join(","));
+  assert.deepEqual(outside, []);
+}));
+
+test("Journey track: shows your place in the Mushaf (page 1 at the right) and jumps when tapped", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  const pos = () => page.$eval("#track", t => +getComputedStyle(t).getPropertyValue("--pos"));
+  assert.equal(await pos(), 0);
+  assert.equal(await page.locator("#track b span").count(), 29, "a tick at the start of juz 2 to 30");
+  const box = await page.locator("#track").boundingBox();
+  await page.locator("#track").click({ position: { x: 2, y: box.height / 2 } }); // left end = end of the Mushaf
+  await page.waitForFunction(() => /Page 60[0-4] of 604/.test(document.querySelector("#where").textContent));
+  assert.ok(await pos() > 0.99);
+  await page.locator("#track").click({ position: { x: box.width / 2, y: box.height / 2 } });
+  await page.waitForFunction(() => /Page (29\d|30\d|31\d) of 604/.test(document.querySelector("#where").textContent));
+}));
+
+test("Turning a page slides the new page in, and opening a page directly does not", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  assert.equal(await page.$eval("#page", p => p.dataset.turn || ""), "");
+  await page.click("#nextBtn");
+  await page.waitForSelector('.ayah[data-k="2:1"]');
+  assert.equal(await page.$eval("#page", p => p.dataset.turn), "fwd");
+  assert.equal(await page.$eval("#page .frame", f => getComputedStyle(f).animationName), "turnF");
+  await page.waitForFunction(() => !document.querySelector("#page").dataset.turn, null, { timeout: 3000 });
+  assert.equal(await page.$eval("#page", p => p.dataset.side), "l", "page 2 is a left-hand page");
+  await page.click("#prevBtn");
+  await page.waitForFunction(() => document.querySelector(".folio").textContent === "١");
+  assert.equal(await page.$eval("#page", p => p.dataset.side), "r");
+}));
+
 await run();
