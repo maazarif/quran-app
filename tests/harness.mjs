@@ -43,10 +43,10 @@ export const getAyahMeta=(id,l)=>{need(l);return _meta(id)}, findPage=(s,a,l)=>{
   wrongLayout: `export const getAyahMeta=id=>({..._meta(id),page:Math.min(604,_meta(id).page+1)}); export const findPage=()=>99;`
 };
 
-// Arabic test string with harakat and Quranic annotation marks (U+0670, U+06DF, U+06E5),
-// used to prove the app shows text byte-for-byte without normalising it.
-export const arText = (s, a) => "نَصٌّ تَجْرِيبِىٌّ ٰ۟ۥ " + s + "-" + a;
-export const BASMALA_FIXTURE = "سَطْرُ ٱلِٱفْتِتَاحِ ٱلتَّجْرِيبِىُّ";
+// The Arabic the app shows is its bundled, verified Uthmani file; tests compare against that file directly.
+export const UTHMANI = JSON.parse(readFileSync(new URL("../data/uthmani-hafs.json", import.meta.url), "utf8")).ayat;
+export const arText = (s, a) => UTHMANI[s][a-1];
+export const BASMALA_FIXTURE = UTHMANI[1][0];
 const chapter = (lang, s) => ({
   id: s, name: "سورة" + s, transliteration: "Surah-" + s, type: s === 2 ? "medinan" : "meccan", total_verses: COUNTS[s-1],
   verses: Array.from({length: COUNTS[s-1]}, (_, i) => ({
@@ -80,6 +80,7 @@ export async function launch(opts = {}, viewport = {width: 1100, height: 900}) {
     log.requests.push(url);
     if (url.startsWith(ORIGIN + "/")) {
       let path = new URL(url).pathname.slice(1) || "index.html";
+      if (path === "data/uthmani-hafs.json" && o.uthmani === "404") return route.fulfill({ status: 404, body: "" });
       if (path.startsWith("data/timings/") && o.timings === "404") return route.fulfill({ status: 404, body: "" });
       const file = new URL(path, APP);
       if (!existsSync(file) || path.startsWith("tests/")) return route.fulfill({ status: 404, body: "" });

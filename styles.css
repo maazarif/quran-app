@@ -251,3 +251,23 @@ input[type=range]{width:100%;accent-color:var(--frame)}
 .paperseg button{border:1px solid var(--line);background:var(--chip);border-radius:12px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.78rem}
 .paperseg button[aria-pressed="true"]{border-color:var(--frame);box-shadow:inset 0 0 0 1px var(--frame)}
 .paperseg .pv{width:44px;height:30px;border-radius:6px;border:1px solid rgba(127,127,127,.35);display:flex;align-items:center;justify-content:center;font:600 .85rem/1 var(--f-ui)}
+
+/* IndoPak words: lay every word out strictly right to left in stored order, as one unit. The text uses the
+   font's own glyph codes (ayah numbers, some letters such as the alif with kasra at the start of a word);
+   left to themselves, browsers treat those codes as left-to-right and can move them out of place. */
+.ip .ayah,.ip .w,.ipflow,.vrow .var.ipv,.basmala.ipv,.sheet .ar.ipar,.seg .sample{unicode-bidi:bidi-override;direction:rtl}
+
+/* IndoPak highlights run unbroken across the words of an ayah: each word's colour reaches over to the
+   next word of the same ayah on the line (--gl is set after the line is laid out) */
+.ip .ayah{position:relative;border-radius:0}
+.ip .ayah::before{content:"";position:absolute;top:0;bottom:0;right:100%;width:var(--gl,0px);background:inherit}
+.ip .gapw{white-space:normal}
+.ip .gapw[data-hl="amber"]{background:var(--hl-amber)} .ip .gapw[data-hl="green"]{background:var(--hl-green)}
+.ip .gapw[data-hl="blue"]{background:var(--hl-blue)} .ip .gapw[data-hl="rose"]{background:var(--hl-rose)}
+.ip .gapw.cur{background:var(--cur)!important} .ip .gapw.playing,.ip .gapw.flash{background:var(--play)}
+
+/* sheets: a close button that stays in reach while the sheet scrolls */
+.sheet-top{position:sticky;top:-10px;z-index:2;background:var(--paper);display:flex;align-items:center;justify-content:space-between;gap:8px;margin:-10px 0 0;padding:10px 0 6px}
+.sheet-top .grip{margin:0;flex:none}
+.sheet-top .grip{border:0;padding:0;cursor:pointer;height:6px;width:48px}
+.sheet-close{border:1px solid var(--line);background:var(--chip);border-radius:999px;height:36px;padding:0 16px;font-weight:600;font-size:.88rem;color:var(--ink)}

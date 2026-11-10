@@ -80,9 +80,9 @@ test("still loads when the source surah index is unavailable (built-in list)", (
   assert.match(await page.locator("#surahJump option").nth(1).textContent(), /2\. Al-Baqarah/);
 }));
 
-test("shows a text error (not made-up text) when the Quran text can't load", () => withPage({ text: "404" }, async ({ page }) => {
+test("shows an error (not made-up text) when the Quran text can't load", () => withPage({ uthmani: "404" }, async ({ page }) => {
   await page.waitForSelector(".state.err", { timeout: 15000 });
-  assert.match(await page.locator(".state.err b").textContent(), /text didn't load/);
+  assert.match(await page.locator(".state.err b").textContent(), /Quran text didn't load/);
   assert.equal(await page.locator(".ayah").count(), 0);
 }));
 
@@ -308,7 +308,8 @@ test("Ayah number: choose a surah, type an ayah, and that ayah's page opens with
   await flashOn(page, "2:255");
   assert.equal(await page.locator("#surahJump").inputValue(), "2");
   assert.equal(await page.locator("#ayahJump").inputValue(), "255");
-  const inView = await page.$eval('.ayah[data-k="2:255"]', e => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
+  // Ayat al-Kursi is taller than a phone screen, so its start must come on screen (after the smooth scroll)
+  const inView = await page.waitForFunction(() => { const r = document.querySelector('.ayah[data-k="2:255"]').getClientRects()[0]; return r.top >= 0 && r.bottom <= innerHeight; }, null, { timeout: 4000 }).then(() => true, () => false);
   assert.ok(inView, "ayah scrolled into view");
 }, { width: 390, height: 844 }));
 
@@ -390,7 +391,7 @@ test("Highlight mode: change colour, recolour an ayah, use the eraser; colours a
 test("Highlight mode: press and hold opens the full menu; Done brings back normal taps", () => withPage({}, async ({ page }) => {
   await page.waitForSelector(READY, { timeout: 15000 });
   await page.click("#hlBtn");
-  const box = await page.locator('.ayah[data-k="1:5"]').boundingBox();
+  const box = await page.locator('.ayah[data-k="1:5"] .end').boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down(); await page.waitForTimeout(650); await page.mouse.up();
   await page.waitForSelector("#sheet:not([hidden])");
@@ -1235,6 +1236,187 @@ test("on iPhone, Install explains Add to Home Screen", () => withPage({ userAgen
   await page.waitForSelector(READY, { timeout: 15000 });
   await page.click("#installBtn");
   assert.match(await page.locator("#sheet").textContent(), /Share, then Add to Home Screen/);
+}, { width: 390, height: 844 }));
+
+/* ---------- the Quran text is exactly King Fahd's text (every ayah) ---------- */
+const REF = f => JSON.parse(readFileSync(new URL("./reference/" + f, import.meta.url), "utf8"));
+const UTH_FILE = JSON.parse(readFileSync(new URL("../data/uthmani-hafs.json", import.meta.url), "utf8"));
+const ALL_AYAT = COUNTS.flatMap((n, i) => Array.from({ length: n }, (_, j) => [i + 1, j + 1]));
+// Split a text into its letters and marks, and the places where words break. Encoding-only differences are set
+// aside: Unicode's canonical mark order (NFC), the tatweel that carries a small alif, U+200F direction marks and
+// the thin space U+2009 that one copy puts inside a word. Nothing that is a letter or a mark is ever removed.
+function lettersAndBreaks(t) {
+  t = t.normalize("NFC").replace(/[\u0640\u200F\u2009]/g, "");
+  let chars = "", breaks = new Set();
+  for (const c of t) { if (/\s/.test(c)) breaks.add(chars.length); else chars += c; }
+  return { chars, breaks };
+}
+
+test("Uthmani: all 6,236 ayat have exactly King Fahd's letters and marks (Mushaf al-Madinah, v13)", () => {
+  const ref = {}; for (const r of REF("kfgqpc-uthmani-hafs-v13.json").quran) ref[r.chapter + ":" + r.verse] = r.text;
+  assert.equal(Object.keys(ref).length, 6236);
+  assert.equal(ALL_AYAT.length, 6236);
+  const wrong = [], badBreak = [];
+  for (const [s, a] of ALL_AYAT) {
+    const mine = lettersAndBreaks(UTH_FILE.ayat[s][a - 1]), kf = lettersAndBreaks(ref[s + ":" + a]);
+    if (mine.chars !== kf.chars) wrong.push(s + ":" + a);
+    // every word break in the app is a word break in King Fahd's copy; that copy's only extra breaks are the
+    // space it leaves after an open tanween (U+08F0-08F2) inside a word
+    for (const b of mine.breaks) if (!kf.breaks.has(b)) badBreak.push(s + ":" + a);
+    for (const b of kf.breaks) if (!mine.breaks.has(b) && !/[\u08F0-\u08F2]\p{M}*$/u.test(kf.chars.slice(0, b))) badBreak.push(s + ":" + a);
+  }
+  assert.deepEqual(wrong, [], "ayat whose letters or marks differ");
+  assert.deepEqual([...new Set(badBreak)], [], "ayat whose words are split differently");
+});
+
+test("Uthmani: the bundled file is the published source, changed only by the open-tanween code points and two restored word spaces", () => {
+  const src = REF("quran-json-3.1.2-quran.json");
+  const fix = t => t.replace(/\u0657/g, "\u08F0").replace(/\u065E/g, "\u08F1").replace(/\u0656/g, "\u08F2").normalize("NFC");
+  // the only other change: a word space the source leaves out in two ayat, restored as in King Fahd's v13 file
+  const corr = Object.fromEntries(UTH_FILE.corrections.map(c => [c.ayah, c]));
+  assert.deepEqual(Object.keys(corr), ["37:164", "41:47"]);
+  for (const c of UTH_FILE.corrections) assert.equal(c.source.replace(/ /g, ""), c.kfgqpc_v13.replace(/ /g, ""), "a correction only adds a space");
+  for (const ch of src) {
+    assert.equal(UTH_FILE.ayat[ch.id].length, ch.verses.length, "surah " + ch.id + " ayah count");
+    for (const v of ch.verses) {
+      const k = ch.id + ":" + v.id, c = corr[k];
+      let want = fix(v.text);
+      if (c) { assert.equal(want.split(c.source).length, 2, k); want = want.replace(c.source, c.kfgqpc_v13); }
+      assert.equal(UTH_FILE.ayat[ch.id][v.id - 1], want, k);
+    }
+  }
+  const all = Object.values(UTH_FILE.ayat).flat().join("");
+  assert.ok(!/[\u0656\u0657\u065E]/.test(all), "no legacy open-tanween code points left");
+  assert.equal(Object.values(UTH_FILE.ayat).flat().length, 6236);
+});
+
+test("Uthmani: every ayah on every Madani page is shown exactly as in the bundled text", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  const shown = await page.evaluate(async () => {
+    const out = [];
+    for (let p = 1; p <= 604; p++) {
+      location.hash = "#p" + p;
+      const num = String(p).replace(/\d/g, d => "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669"[d]);
+      await new Promise(r => { const t0 = Date.now(); (function w(){ const f = document.querySelector(".folio"); if (f && f.textContent === num) r(); else if (Date.now() - t0 > 4000) r(); else setTimeout(w, 5); })(); });
+      document.querySelectorAll("#page .ayah").forEach(e => out.push([p, e.dataset.k, e.firstChild.nodeValue]));
+    }
+    return out;
+  });
+  const seen = {};
+  for (const [p, k, t] of shown) { const [s, a] = k.split(":").map(Number); assert.equal(t, UTH_FILE.ayat[s][a - 1], "page " + p + ", ayah " + k); seen[k] = 1; }
+  assert.deepEqual(ALL_AYAT.map(([s, a]) => s + ":" + a).filter(k => !seen[k]), [], "ayat not shown on any page");
+}));
+
+test("IndoPak: every ayah's letters match King Fahd's Nastaleeq text, except 47 listed spelling conventions", () => {
+  const D = JSON.parse(readFileSync(new URL("../data/indopak-spelling-differences.json", import.meta.url), "utf8"));
+  const G = Object.entries(D.glyph_letters).map(([u, v]) => [String.fromCodePoint(parseInt(u.slice(2), 16)), v]);
+  const SAME = { "ی":"ي", "ى":"ي", "ہ":"ه", "ھ":"ه", "ک":"ك", "ٱ":"ا" };
+  const letters = t => { for (const [g, v] of G) t = t.split(g).join(v); let o = "";
+    for (let c of t.normalize("NFD")) { c = SAME[c] || c; const n = c.codePointAt(0);
+      if ((n >= 0xE000 && n <= 0xF8FF) || /[\p{Mn}\p{Zs}\p{Cf}]/u.test(c) || c === "\u0640" || (n >= 0x06D6 && n <= 0x06ED) || c === "۞" || c === "۩") continue;
+      o += c; } return o; };
+  const words = {}; for (let p = 1; p <= 610; p++) for (const [loc, t] of ipWordsOn(p)) { const k = loc.split(":").slice(0, 2).join(":"); (words[k] ||= []).push(t); }
+  const ref = {}; for (const r of REF("kfgqpc-nastaleeq.json").quran) ref[r.chapter + ":" + r.verse] = r.text;
+  assert.equal(Object.keys(words).length, 6236, "every ayah is on an IndoPak page");
+  const differ = [];
+  for (const [s, a] of ALL_AYAT) { const k = s + ":" + a; if (letters(words[k].join(" ")) !== letters(ref[k])) differ.push(k); }
+  assert.deepEqual(differ, D.ayat.map(x => x.ayah), "only the listed ayat differ");
+  for (const x of D.ayat) {
+    assert.equal(letters(words[x.ayah].join(" ")), x.app_letters, x.ayah);
+    assert.equal(letters(ref[x.ayah]), x.kfgqpc_letters, x.ayah);
+  }
+  // each private-use glyph always stands for the same letters, so reading it one way is safe everywhere
+  for (const [g] of G) assert.ok(Object.values(words).flat().some(w => w.includes(g)), "glyph map entry in use");
+});
+
+test("IndoPak: words that start with the alif-kasra glyph draw it first, on the right (Al-Mulk 67:2, p562)", () => withPage({}, async ({ page }) => {
+  const pages = [...new Set(Array.from({ length: 610 }, (_, i) => i + 1).filter(p => ipWordsOn(p).some(([, t]) => t.includes("\uF61F"))))];
+  assert.ok(pages.includes(562));
+  let checked = 0;
+  for (const p of pages) {
+    await page.goto(PAGE_URL + "#i" + p);
+    await page.waitForSelector(".ip .ayah", { timeout: 20000 });
+    await page.evaluate(() => document.fonts.ready);
+    const res = await page.$$eval(".ip .ayah", els => els.filter(e => e.textContent.startsWith("\uF61F")).map(e => {
+      const r = document.createRange(); r.setStart(e.firstChild, 0); r.setEnd(e.firstChild, 1);
+      const g = r.getBoundingClientRect(), w = e.getBoundingClientRect();
+      return { k: e.dataset.k, bidi: getComputedStyle(e).unicodeBidi, dir: getComputedStyle(e).direction, gap: w.right - g.right, width: w.width };
+    }));
+    for (const x of res) {
+      assert.equal(x.bidi, "bidi-override", x.k); assert.equal(x.dir, "rtl", x.k);
+      assert.ok(x.gap < 2, "page " + p + " " + x.k + ": first letter is " + x.gap.toFixed(1) + "px from the right edge of its word");
+      checked++;
+    }
+  }
+  assert.equal(checked, 54, "all 54 such words checked");
+}, { width: 460, height: 900 }));
+
+/* ---------- IndoPak highlight covers the spaces between words ---------- */
+const gapCover = (page, k) => page.$$eval('.ip .ayah[data-k="' + k + '"]', ws => {
+  const out = [];
+  for (let i = 0; i + 1 < ws.length; i++) {
+    const a = ws[i], b = ws[i + 1]; if (a.parentNode !== b.parentNode) continue;
+    const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect(); if (Math.abs(ra.top - rb.top) > 4) continue;
+    const before = getComputedStyle(a, "::before");
+    out.push({ gap: ra.left - rb.right, w: parseFloat(before.width), bg: before.backgroundColor, own: getComputedStyle(a).backgroundColor });
+  }
+  return out;
+});
+test("IndoPak: a highlighted or marked ayah is coloured across the spaces between its words", () => withPage({ tap: "default" }, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i562");
+  await page.waitForSelector('.ip .ayah[data-k="67:2"]', { timeout: 20000 });
+  await page.click("#hlBtn"); await page.click("#hlColors .swatch.green");
+  await page.locator('.ip .ayah[data-k="67:2"]').nth(2).click(); await page.click("#hlDone");
+  await page.locator('.ip .ayah[data-k="67:1"]').nth(2).click();
+  await page.waitForTimeout(400); // colour fade-in
+  for (const k of ["67:1", "67:2"]) {
+    const gaps = await gapCover(page, k);
+    assert.ok(gaps.length > 3, k + " has gaps to check");
+    for (const g of gaps) {
+      assert.ok(Math.abs(g.w - Math.max(0, g.gap)) < 1.5, k + ": fill " + g.w + " vs gap " + g.gap);
+      assert.equal(g.bg, g.own, k + ": gap has the ayah's colour");
+      assert.notEqual(g.own, "rgba(0, 0, 0, 0)");
+    }
+  }
+  // a word next to a different ayah gets no fill (the colour stops at the ayah's edge)
+  const edge = await page.$$eval(".ip .ayah", ws => ws.filter((w, i) => ws[i + 1] && ws[i + 1].dataset.k !== w.dataset.k).map(w => parseFloat(getComputedStyle(w, "::before").width)));
+  assert.ok(edge.every(x => x === 0), "no fill across into the next ayah");
+}, { width: 460, height: 900 }));
+
+test("IndoPak larger text: the spaces between a highlighted ayah's words are coloured too", () => withPage({}, async ({ page }) => {
+  await page.goto(PAGE_URL + "#i562");
+  await page.waitForSelector('.ip .ayah[data-k="67:2"]', { timeout: 20000 });
+  await setIpSize(page, 1.6);
+  await page.waitForSelector(".ipflow .ayah", { timeout: 10000 });
+  await page.click("#hlBtn"); await page.click("#hlColors .swatch.green");
+  await page.locator('.ip .ayah[data-k="67:2"]').nth(2).click(); await page.click("#hlDone");
+  await page.waitForTimeout(400);
+  const r = await page.$$eval('.ip .gapw[data-k="67:2"]', g => g.map(x => [getComputedStyle(x).backgroundColor, x.textContent]));
+  const word = await page.$eval('.ip .ayah[data-k="67:2"]', w => getComputedStyle(w).backgroundColor);
+  assert.equal(r.length, ipWordsOn(562).filter(([l]) => l.startsWith("67:2:")).length - 1, "one coloured space between each pair of words");
+  for (const [bg, t] of r) { assert.equal(bg, word); assert.equal(t, " "); }
+  assert.deepEqual(await wordsShown(page), ipWordsOn(562).map(([loc, t]) => [loc.split(":").slice(0, 2).join(":"), t]), "words unchanged");
+}, { width: 390, height: 844 }));
+
+/* ---------- settings and menus close clearly ---------- */
+test("Settings button shows a gear and the word Settings; Done closes the settings and ayah menus", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  assert.equal(await page.locator("#openSettings .txt").textContent(), "Settings");
+  assert.equal(await page.locator("#openSettings svg circle").count(), 1, "gear centre");
+  await page.click("#openSettings");
+  await page.waitForSelector("#sheet:not([hidden])");
+  const done = page.locator("#sheetClose");
+  assert.equal(await done.textContent(), "Done");
+  await page.locator("#sheetInner").evaluate(e => e.scrollTop = e.scrollHeight);
+  const box = await done.boundingBox();
+  assert.ok(box && box.y >= 0 && box.y + box.height <= 844, "Done stays on screen while scrolling the settings");
+  await done.click();
+  assert.equal(await page.locator("#sheet").isHidden(), true);
+  assert.equal(await page.locator("#scrim").isHidden(), true);
+  await page.click('.ayah[data-k="1:2"]');
+  await page.waitForSelector("#sheet:not([hidden])");
+  await page.click("#sheetClose");
+  assert.equal(await page.locator("#sheet").isHidden(), true);
 }, { width: 390, height: 844 }));
 
 await run();

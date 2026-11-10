@@ -151,6 +151,17 @@ function calibrateIP(){
 }
 const chapterCache = {};    // "lang/s" -> chapter json
 let BASMALA = null;
+/* Uthmani text for the Madani pages: bundled (data/uthmani-hafs.json, see data/SOURCES.md) and checked
+   letter for letter against King Fahd Complex's Uthmani Hafs text in the tests. Shown exactly as stored. */
+let UTH = null;
+async function loadUthmani(){
+  const r = await fetch("data/uthmani-hafs.json");
+  if(!r.ok) throw new Error("Uthmani text: HTTP "+r.status);
+  const d = await r.json();
+  if(!d.ayat || Object.keys(d.ayat).length!==114 || d.ayat["1"].length!==7) throw new Error("Uthmani text: incomplete file");
+  UTH = d.ayat; BASMALA = UTH["1"][0];
+}
+const uth = (s,a) => UTH[s][a-1];
 
 /* Surah list (names and ayah counts are standard metadata, not Quran text). Used when the source index can't load. */
 const SURAH_EN = "Al-Fatihah|Al-Baqarah|Ali 'Imran|An-Nisa|Al-Ma'idah|Al-An'am|Al-A'raf|Al-Anfal|At-Tawbah|Yunus|Hud|Yusuf|Ar-Ra'd|Ibrahim|Al-Hijr|An-Nahl|Al-Isra|Al-Kahf|Maryam|Taha|Al-Anbiya|Al-Hajj|Al-Mu'minun|An-Nur|Al-Furqan|Ash-Shu'ara|An-Naml|Al-Qasas|Al-'Ankabut|Ar-Rum|Luqman|As-Sajdah|Al-Ahzab|Saba|Fatir|Ya-Sin|As-Saffat|Sad|Az-Zumar|Ghafir|Fussilat|Ash-Shura|Az-Zukhruf|Ad-Dukhan|Al-Jathiyah|Al-Ahqaf|Muhammad|Al-Fath|Al-Hujurat|Qaf|Adh-Dhariyat|At-Tur|An-Najm|Al-Qamar|Ar-Rahman|Al-Waqi'ah|Al-Hadid|Al-Mujadilah|Al-Hashr|Al-Mumtahanah|As-Saff|Al-Jumu'ah|Al-Munafiqun|At-Taghabun|At-Talaq|At-Tahrim|Al-Mulk|Al-Qalam|Al-Haqqah|Al-Ma'arij|Nuh|Al-Jinn|Al-Muzzammil|Al-Muddaththir|Al-Qiyamah|Al-Insan|Al-Mursalat|An-Naba|An-Nazi'at|'Abasa|At-Takwir|Al-Infitar|Al-Mutaffifin|Al-Inshiqaq|Al-Buruj|At-Tariq|Al-A'la|Al-Ghashiyah|Al-Fajr|Al-Balad|Ash-Shams|Al-Layl|Ad-Duha|Ash-Sharh|At-Tin|Al-'Alaq|Al-Qadr|Al-Bayyinah|Az-Zalzalah|Al-'Adiyat|Al-Qari'ah|At-Takathur|Al-'Asr|Al-Humazah|Al-Fil|Quraysh|Al-Ma'un|Al-Kawthar|Al-Kafirun|An-Nasr|Al-Masad|Al-Ikhlas|Al-Falaq|An-Nas".split("|");
@@ -224,6 +235,7 @@ async function getLayoutApi(){
 let LOAD_NOTES = [];
 async function loadMeta(){
   buildJuzMap();
+  const uthReady = loadUthmani();
   // surah index: built-in list first, enriched by the source's index when it loads
   INDEX = SURAH_EN.map((en,i)=>({id:i+1, name:SURAH_AR[i], transliteration:en, type:MEDINAN.has(i+1)?"medinan":"meccan", total_verses:SURAH_N[i]}));
   json("chapters/en/index.json").then(idx=>{
@@ -245,6 +257,7 @@ async function loadMeta(){
   }
   if(e.ayahPage["2:1"]!==2 || e.ayahPage["114:1"]!==604) throw new Error("Page layout data did not match the 604-page Madani Mushaf");
   ED.madani = finishEdition(e);
+  await uthReady;
 }
 function chapterPath(lang, s){ return (lang==="none") ? "chapters/"+s+".json" : "chapters/"+lang+"/"+s+".json"; }
 async function chapter(lang, s){
@@ -252,7 +265,7 @@ async function chapter(lang, s){
   if(!chapterCache[k]) chapterCache[k] = json(chapterPath(lang,s)).catch(e=>{ delete chapterCache[k]; throw e; });
   return chapterCache[k];
 }
-const verse = (ch, a) => (ch.verses || [])[a-1] || {};
+const verse = (ch, a) => ((ch && ch.verses) || [])[a-1] || {};
 
 /* ---------- rendering ---------- */
 // Page colours. The preview colours here only draw the swatches in settings; the page itself uses styles.css.
@@ -300,7 +313,7 @@ function renderRows(body, list, bySurah, ip, textErr){
   const T = TRANSLATIONS.find(t=>t.id===S.trans);
   body.style.setProperty("--ipr", (1.55*S.ipScale)+"rem");
   if(textErr) body.append(el("p",{class:"empty"},"The translation didn't load. Check your internet connection, then turn the page to try again."));
-  else if(S.trans==="none" && !S.translit) body.append(el("p",{class:"empty"},"Choose a translation in Aa to show it beside the Arabic."));
+  else if(S.trans==="none" && !S.translit) body.append(el("p",{class:"empty"},"Choose a translation in Settings to show it beside the Arabic."));
   let cur = null;
   for(const [s,a] of list){
     const k = key(s,a);
@@ -318,7 +331,7 @@ function renderRows(body, list, bySurah, ip, textErr){
     flagAyah(row, k);
     const ar = el("div",{class:"var"+(ip?" ipv":"")});
     if(ip) IP.ayahWords[k].forEach((w,i)=>{ if(i) ar.append(" "); ar.append(w); });
-    else { ar.append(verse(bySurah[s],a).text || "", " "); ar.append(el("span",{class:"end"},"﴿"+AR(a)+"﴾")); }
+    else { ar.append(uth(s,a), " "); ar.append(el("span",{class:"end"},"﴿"+AR(a)+"﴾")); }
     const tr = el("div",{class:"vtr"});
     tr.append(el("span",{class:"ref"}, s+":"+a));
     const v = bySurah[s] ? verse(bySurah[s],a) : {};
@@ -343,17 +356,14 @@ async function renderPage(){
   $("juzJump").value = PAGE_JUZ[p]; $("pageJump").value = p;
   try{ history.replaceState(null,"",(ip?"#i":"#p")+p) }catch(e){}
 
-  // Madani pages need the Uthmani text; IndoPak pages need it only for translations
+  // The Arabic text is bundled with the app; only translations come from the internet
   const side = S.layout==="side";
   let chs = null, textErr = null;
-  if(!ip || S.trans!=="none" || S.translit){
-    try{
-      chs = await Promise.all(surahs.map(s => chapter(S.trans, s)));
-      if(!ip && !BASMALA){ const f = await chapter(S.trans==="none"?"none":S.trans, 1); BASMALA = verse(f,1).text; }
-    }catch(e){ textErr = e; }
+  if(S.trans!=="none" || S.translit){
+    try{ chs = await Promise.all(surahs.map(s => chapter(S.trans, s))); }
+    catch(e){ textErr = e; }
   }
   if(token!==renderToken) return;
-  if(textErr && !ip){ showError("The Mushaf text didn't load.", new Error("Quran text ("+S.trans+"): "+(textErr && textErr.message || textErr)), renderPage); return; }
   const bySurah = chs ? Object.fromEntries(surahs.map((s,i)=>[s,chs[i]])) : {};
 
   const page = $("page"); page.replaceChildren();
@@ -365,7 +375,7 @@ async function renderPage(){
   if(side){
     fr.append(head, body, el("div",{class:"folio"},AR(p)));
     page.append(fr);
-    renderRows(body, list, bySurah, ip, ip ? textErr : null);
+    renderRows(body, list, bySurah, ip, textErr);
     $("trans").hidden = true;
     updatePlayer();
     return;
@@ -374,6 +384,7 @@ async function renderPage(){
     fr.append(head, body, el("div",{class:"folio"},AR(p)));
     page.append(fr);
     layoutIndopak(body, p);
+    fillGaps(body);
     renderTrans(list, bySurah, textErr);
     updatePlayer();
     return;
@@ -396,12 +407,12 @@ async function renderPage(){
     if(S.sel===k) sp.classList.add("sel");
     if(S.current===k) sp.classList.add("cur");
     if(P.cur===k) sp.classList.add("playing");
-    sp.append(document.createTextNode(verse(bySurah[s],a).text || ""), document.createTextNode(" "), el("span",{class:"end"},"﴿"+AR(a)+"﴾"));
+    sp.append(document.createTextNode(uth(s,a)), document.createTextNode(" "), el("span",{class:"end"},"﴿"+AR(a)+"﴾"));
     para.append(sp, document.createTextNode(" "));
   }
   fr.append(head, body, el("div",{class:"folio"},AR(p)));
   page.append(fr);
-  renderTrans(list, bySurah);
+  renderTrans(list, bySurah, textErr);
   updatePlayer();
 }
 
@@ -443,7 +454,10 @@ function layoutIndopak(body, p){
       if(!para){ para = el("p",{class:"ipflow"}); body.append(para); }
       for(const [loc,txt] of ln.w){
         const [s,a,wn] = loc.split(":").map(Number), k = key(s,a);
-        if(para.childNodes.length) para.append(" ");
+        if(para.childNodes.length){
+          if(k===prevK){ const g = el("span",{class:"gapw","data-k":k}," "); flagAyah(g,k); para.append(g); }
+          else para.append(" ");
+        }
         para.append(wordSpan(s,a,wn,txt,k!==prevK)); prevK = k;
       }
     }
@@ -473,6 +487,18 @@ function layoutIndopak(body, p){
       }
     }
     body.append(d);
+  }
+}
+
+// let each IndoPak word's highlight reach the next word of the same ayah on its line
+function fillGaps(body){
+  for(const line of body.querySelectorAll(".ipl")){
+    const ws = [...line.querySelectorAll(".ayah")];
+    for(let i=0;i<ws.length;i++){
+      const a = ws[i], b = ws[i+1];
+      if(b && a.dataset.k===b.dataset.k){ const g = a.getBoundingClientRect().left - b.getBoundingClientRect().right; a.style.setProperty("--gl", Math.max(0,g)+"px"); }
+      else a.style.removeProperty("--gl");
+    }
   }
 }
 
@@ -707,7 +733,14 @@ function updatePlayer(){
 }
 
 /* ---------- sheets ---------- */
-function openSheet(nodes){ const s=$("sheetInner"); s.replaceChildren(el("div",{class:"grip"}),...nodes); $("sheet").hidden=false; $("scrim").hidden=false; }
+function openSheet(nodes){
+  const s=$("sheetInner");
+  const top = el("div",{class:"sheet-top"}), grip = el("button",{class:"grip","aria-label":"Close"}), done = el("button",{class:"sheet-close",id:"sheetClose"},"Done");
+  grip.onclick = closeSheet; done.onclick = closeSheet;
+  top.append(grip, done);
+  s.replaceChildren(top, ...nodes); $("sheet").hidden=false; $("scrim").hidden=false;
+  $("sheet").scrollTop = 0;
+}
 function closeSheet(){ $("sheet").hidden=true; $("scrim").hidden=true; if(S.sel){ document.querySelectorAll(".ayah.sel").forEach(e=>e.classList.remove("sel")); S.sel=null; } }
 
 async function ayahSheet(k){
@@ -716,14 +749,14 @@ async function ayahSheet(k){
   document.querySelectorAll('.ayah[data-k="'+k+'"]').forEach(e=>e.classList.add("sel"));
   const [s,a] = k.split(":").map(Number), info = INDEX[s-1], ip = isIP();
   let v = {};
-  try { v = verse(await chapter(S.trans, s), a); } catch(e){ if(!ip) throw e; }
+  if(S.trans!=="none" || S.translit){ try { v = verse(await chapter(S.trans, s), a); } catch(e){} }
   const bm = S.bookmarks.includes(k), hl = S.highlights[k];
   const h = el("h3",{}, info.transliteration); h.append(el("span",{}, s+":"+a+" · page "+AYAH_PAGE[k]));
   let ar;
   if(ip){ // the IndoPak words as stored; the ayah number is part of the text's last word
     ar = el("p",{class:"ar ipar"});
     IP.ayahWords[k].forEach((w,i)=>{ if(i) ar.append(" "); ar.append(el("span",{},w)); });
-  } else { ar = el("p",{class:"ar"}, v.text); ar.append(" ", el("span",{class:"end"},"﴿"+AR(a)+"﴾")); }
+  } else { ar = el("p",{class:"ar"}, uth(s,a)); ar.append(" ", el("span",{class:"end"},"﴿"+AR(a)+"﴾")); }
   const nodes = [h, ar];
   if(S.trans!=="none" && v.translation){ const T=TRANSLATIONS.find(t=>t.id===S.trans); nodes.push(el("p",T.rtl?{class:"tr",dir:"rtl"}:{class:"tr"}, v.translation)); }
   const acts = el("div",{class:"row"});
@@ -734,9 +767,7 @@ async function ayahSheet(k){
   // IndoPak ayah numbers and some waqf signs only display in its own font, so other apps get the
   // standard Unicode (Uthmani) text instead
   bCopy.onclick = async ()=>{
-    let u = v;
-    if(ip && !u.text){ try { u = verse(await chapter("none", s), a); } catch(e){ toast("Copy needs an internet connection the first time."); return; } }
-    const txt = u.text+" ﴿"+AR(a)+"﴾\n"+(S.trans!=="none"&&v.translation? v.translation+"\n":"")+"— "+info.transliteration+" "+s+":"+a;
+    const txt = uth(s,a)+" ﴿"+AR(a)+"﴾\n"+(S.trans!=="none"&&v.translation? v.translation+"\n":"")+"— "+info.transliteration+" "+s+":"+a;
     const done = ip ? "Copied "+s+":"+a+" in Uthmani script" : "Copied "+s+":"+a;
     navigator.clipboard.writeText(txt).then(()=>toast(done)).catch(()=>{ const r=document.createRange(); r.selectNodeContents(ar); const sl=getSelection(); sl.removeAllRanges(); sl.addRange(r); toast("Text selected. Copy it from the menu."); });
   };
@@ -1060,7 +1091,7 @@ function start(){
     }
     S.page = Math.max(1, Math.min(COUNT, S.page));
     READY = true; fillJumps(); renderPage(); useTimings();
-  }).catch(e=>{ PAGES={}; AYAH_PAGE={}; JUZ_START={}; PAGE_JUZ={}; showError("The Mushaf page layout didn't load.", e, start); });
+  }).catch(e=>{ PAGES={}; AYAH_PAGE={}; JUZ_START={}; PAGE_JUZ={}; showError(/^Uthmani text/.test(e && e.message) ? "The Quran text didn't load." : "The Mushaf page layout didn't load.", e, start); });
 }
 start();
 

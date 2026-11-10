@@ -35,11 +35,11 @@ Open http://localhost:8080.
 
 ## Where the content comes from
 
-The Quran text is never typed or edited by hand. It is downloaded from these sources and shown exactly as published (each ayah is rendered as received, with no normalisation):
+The Quran text is never typed or edited by hand. It is bundled from the sources below and checked, ayah by ayah, against the King Fahd Complex's own digital texts by the test suite (see `data/SOURCES.md` for exactly what is compared and the only encoding fixes made):
 
 | Content | Source | Version |
 |---|---|---|
-| Uthmani Arabic text | The Noble Qur'an Encyclopedia (King Fahd Glorious Qur'an Printing Complex), via the `quran-json` package on jsDelivr | 3.1.2 (pinned) |
+| Uthmani Arabic text | King Fahd Glorious Qur'an Printing Complex text via the `quran-json` package, bundled in `data/uthmani-hafs.json`; same letters and marks as KFGQPC Uthmani Hafs v13 in all 6,236 ayat | 3.1.2 (fixed copy) |
 | Translations | Saheeh International, Maududi (Urdu), Indonesian Ministry of Religious Affairs, Diyanet (Turkish), Hamidullah (French), Isa García (Spanish), Kuliev (Russian), Muhiuddin Khan (Bengali), Makin (Chinese), Bernström (Swedish); transliteration from Tanzil | same package |
 | IndoPak text and 15-line, 610-page layout (Taj / Qudratullah), word by word | QUL, Quranic Universal Library by Tarteel AI; bundled in `data/` with checksums (see `data/SOURCES.md`) | fixed copy |
 | IndoPak Nastaleeq font (Hanafi, waqf lazim; normal, compact and compressed widths) | QUL / Tarteel; bundled in `fonts/indopak/` | fixed copy |
@@ -52,7 +52,7 @@ Several translations are copyrighted. Check each translation's terms before publ
 
 ## Tests
 
-Functional tests run the real app in headless Chrome with local stand-ins for the online sources, so they work without internet. They cover loading and error handling, exact text rendering, all 604 Madani pages, the IndoPak edition with its real bundled text and fonts (exact words on sample pages, printed line breaks, known pages, fonts drawing the ayah numbers, every page ending at an ayah end), navigation, translations, script styles, bookmarks, highlights, copy, recitation, phone layout, the install flow and offline reopening.
+Functional tests run the real app in headless Chrome with local stand-ins for the online sources, so they work without internet. They check every one of the 6,236 ayat against the King Fahd Complex's Uthmani (v13) and IndoPak texts, and cover loading and error handling, exact text rendering, all 604 Madani pages, the IndoPak edition with its real bundled text and fonts (exact words on sample pages, printed line breaks, known pages, fonts drawing the ayah numbers, every page ending at an ayah end), navigation, translations, script styles, bookmarks, highlights, copy, recitation, phone layout, the install flow and offline reopening.
 
 ```
 npm install

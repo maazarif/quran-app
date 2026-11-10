@@ -1,5 +1,18 @@
 # Bundled data sources
 
+## How the Quran text is checked
+The tests check every ayah against King Fahd Glorious Qur'an Printing Complex's own digital texts (in `tests/reference/`, copied unchanged from github.com/fawazahmed0/quran-api at commit 93e6f649):
+- **Uthmani (Madani pages):** all 6,236 ayat have exactly the same letters and marks as KFGQPC Uthmani Hafs v13 (`kfgqpc-uthmani-hafs-v13.json`), and every word break matches. The only differences are encoding: Unicode canonical mark order (NFC), the tatweel that carries a small alif, U+200F direction marks, and the space that file leaves after an open tanween inside a word.
+- **IndoPak:** all 6,236 ayat have the same letters as KFGQPC's Nastaleeq (IndoPak) text (`kfgqpc-nastaleeq.json`), except 47 ayat where the two printed traditions spell a word differently (for example an extra seat letter or a different long-vowel sign). These 47 are listed with both spellings in `data/indopak-spelling-differences.json`, and the test fails if any other ayah differs. Seven private-use glyphs in the QUL text stand for whole letters (`glyph_letters` in that file); each stands for the same letters in every place it is used.
+- **On screen:** every ayah on all 604 Madani pages is shown byte for byte as in the bundled file, and IndoPak words that start with a private-use glyph are drawn right to left (the glyph comes first).
+
+## data/uthmani-hafs.json
+The Uthmani text shown on Madani pages, side by side, in the ayah menu and when copying.
+- From quran-json 3.1.2 (github.com/risan/quran-json, tag v3.1.2, commit 707ba0f) `dist/quran.json`, sha256 d8a8adff387f60ce3ff7dbe3238dd9b27120bfe29d8fcb07ad2e89cad37cefd4 (also kept as `tests/reference/quran-json-3.1.2-quran.json`).
+- Two kinds of change, and the tests check that there are no others:
+  1. Open tanween is stored in the source as old code points (U+0657, U+065E, U+0656) that fonts draw as other marks. They are re-encoded as the official Quranic open tanween U+08F0, U+08F1, U+08F2 (as in KFGQPC's file), then NFC.
+  2. The source joins two words in 37:164 (وَمَامِنَّآ) and 41:47 (مَامِنَّا); the space is restored as in KFGQPC v13 and the printed Mushaf (وَمَا مِنَّآ, مَا مِنَّا). Listed under `corrections` in the file.
+
 ## data/indopak-15-lines.json
 IndoPak (Hanafi Nastaleeq) Quran text, word by word, in the 15-line, 610-page Taj / Qudratullah Mushaf layout.
 - Original source: QUL, Quranic Universal Library by Tarteel AI, layout 6 "Indopak 15 lines – Qudratullah" (https://qul.tarteel.ai/mushaf_layouts/6)
