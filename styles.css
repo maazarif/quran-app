@@ -61,6 +61,7 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .icon-btn{border:1px solid var(--line);background:var(--paper);border-radius:999px;height:40px;min-width:40px;padding:0 14px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:.85rem;font-weight:600;
   box-shadow:0 1px 2px rgba(0,0,0,.05);transition:border-color .15s,background .15s}
 .icon-btn:hover{border-color:var(--frame)}
+a.icon-btn{color:var(--ink);text-decoration:none}
 .icon-btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .count{background:var(--frame);color:var(--paper);border-radius:999px;font-size:.68rem;line-height:18px;padding:0 6px;min-width:18px;text-align:center;font-weight:700}
 

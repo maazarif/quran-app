@@ -287,6 +287,16 @@ test("phone width: no sideways scrolling, controls fit", () => withPage({}, asyn
   assert.ok(sw <= cw, "page scrolls sideways: " + sw + " > " + cw);
 }, { width: 375, height: 760 }));
 
+test("header links to the Muslim Companion app and still fits a small phone", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  assert.equal(await page.getAttribute("#companionLink", "href"), "https://maazarif.github.io/muslim-companion/");
+  assert.ok(await page.isVisible("#companionLink"), "link visible");
+  const { sw, cw, bar } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth,
+    bar: Math.max(...[...document.querySelectorAll(".bar > *")].filter(e => e.offsetParent).map(e => e.getBoundingClientRect().right)) }));
+  assert.ok(sw <= cw, "page scrolls sideways: " + sw + " > " + cw);
+  assert.ok(bar <= cw, "header overflows: " + bar + " > " + cw);
+}, { width: 320, height: 640 }));
+
 test("no script errors across a full session", () => withPage({ audio: "ok" }, async ({ page, log }) => {
   await page.waitForSelector(READY, { timeout: 15000 });
   await page.click("#nextBtn"); await page.waitForSelector('.ayah[data-k="2:1"]');
