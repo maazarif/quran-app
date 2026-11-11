@@ -607,19 +607,41 @@ function plog(msg){
   while(PLOG.length > 40) PLOG.shift();
   try { localStorage.setItem("playLog", JSON.stringify(PLOG)); } catch(e){}
 }
+/* Background keep-alive. While the next surah's recording loads there is a moment with no sound, and iOS puts a
+   minimized home-screen app with no sound to sleep, so the next surah never starts (seen in the playback log).
+   An inaudible signal (about -80 dB, far below hearing) through Web Audio keeps the app awake through that
+   moment. It is started by your tap on play and stops when you pause. */
+let KA = null;
+function keepAlive(on){
+  try {
+    if(on){
+      if(!KA){
+        const C = window.AudioContext || window.webkitAudioContext; if(!C) return;
+        const ctx = new C(), n = ctx.sampleRate * 2, buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+        for(let i=0;i<n;i++) d[i] = (Math.random()*2 - 1) * 1e-4;   // not exact silence, which a phone may treat as "not playing"
+        const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(ctx.destination); src.start();
+        KA = ctx; window.mushafKeepAlive = ctx;
+      }
+      if(KA.state !== "running") KA.resume().catch(()=>{});
+    } else if(KA && KA.state === "running") KA.suspend().catch(()=>{});
+  } catch(e){}
+}
 const aname = k => { const [s,a] = k.split(":").map(Number); return (INDEX[s-1] ? INDEX[s-1].transliteration+" " : "")+s+":"+a; };
 // auto: started by the app itself (the next surah or ayah), not by a tap
 function startPlay(auto){
   if(navigator.audioSession && navigator.audioSession.type!=="playback"){ try { navigator.audioSession.type = "playback"; } catch(e){} }   // media playback: not muted by the silent switch
   const want = P.cur;
-  P.audio.play().then(()=>{ P.playing=true; P.failed=false; P.switching=false; if(P.blocked){ P.blocked=null; } if(auto && want) plog("Playing "+aname(want)); updatePlayer(); keepAwake(true); })
+  keepAlive(true);
+  P.audio.play().then(()=>{ P.playing=true; P.failed=false; P.switching=false; if(P.blocked){ P.blocked=null; }
+      if(auto && want){ const w = P.switchAt ? (Date.now() - P.switchAt)/1000 : 0; plog("Playing "+aname(want)+(w >= 1.5 ? " (started after "+w.toFixed(0)+" s)" : "")); }
+      P.switchAt = 0; P.waitLogged = false; updatePlayer(); keepAwake(true); })
     .catch(err=>{
       if(err && err.name==="AbortError") return;
       P.switching=false;
       plog("The phone refused to start "+(want ? aname(want) : "audio")+" ("+(err && err.name || "error")+")");
       // The phone didn't allow the next recording to start on its own (a locked iPhone can do this). Keep it
       // loaded at its start, so play on the lock screen, or opening the app, carries straight on.
-      if(auto && P.mode==="surah" && err && err.name==="NotAllowedError"){ P.blocked = want; P.playing=false; keepAwake(false); updatePlayer(); return; }
+      if(auto && P.mode==="surah" && err && err.name==="NotAllowedError"){ P.blocked = want; P.playing=false; keepAwake(false); keepAlive(false); updatePlayer(); return; }
       fallbackOrFail();
     });
 }
@@ -679,9 +701,9 @@ function advance(why){
   const now = Date.now(); if(now - advancedAt < 1500) return; advancedAt = now;
   const n = nextItem();
   if(P.mode==="surah" && why) plog("End of surah "+P.surah+" ("+why+")"+(n ? ", next: "+aname(n) : ", stopping"));
-  P.switching = true;
+  P.switching = true; P.switchAt = Date.now(); P.waitLogged = false;
   P.audio.pause();                        // pausing keeps the audio session open
-  if(!n){ P.switching = false; P.playing = false; keepAwake(false); updatePlayer(); if(P.mode==="surah" && S.afterSurah==="stop") toast("Finished the surah"); return; }
+  if(!n){ P.switching = false; P.playing = false; keepAwake(false); keepAlive(false); updatePlayer(); if(P.mode==="surah" && S.afterSurah==="stop") toast("Finished the surah"); return; }
   if(P.mode==="surah") playFrom(n, true); else playAyahFile(n, true);
 }
 let pre = null;
@@ -719,12 +741,15 @@ P.audio.addEventListener("timeupdate", ()=>{
 P.audio.addEventListener("ended", ()=>advance("the file ended"));   // only if looping isn't honoured
 P.audio.addEventListener("error", ()=>{ if(P.cur && P.audio.getAttribute("src")) fallbackOrFail(); });
 // pauses and plays from the lock screen, headphones, the car or a phone call
-P.audio.addEventListener("pause", ()=>{ if(P.switching) return; if(P.playing){ P.playing=false; keepAwake(false); updatePlayer(); } });
+P.audio.addEventListener("pause", ()=>{ if(P.switching) return; if(P.playing){ P.playing=false; keepAwake(false); keepAlive(false); updatePlayer(); } });
+// while the next surah loads: note in the log if it has to wait for the network
+for(const ev of ["waiting","stalled"]) P.audio.addEventListener(ev, ()=>{ if(P.switching && P.switchAt && !P.waitLogged){ P.waitLogged = true; plog("Loading the next recording…"); } });
 P.audio.addEventListener("play", ()=>{ if(!P.playing){ P.playing=true; updatePlayer(); } });
 // iOS ignores lock-screen controls set before playback starts, so set them each time it does
 P.audio.addEventListener("playing", ()=>{ P.switching = false; setMediaControls(); });
 function togglePlay(){
-  if(P.playing){ P.audio.pause(); P.playing=false; keepAwake(false); updatePlayer(); return; }
+  if(P.playing){ P.audio.pause(); P.playing=false; keepAwake(false); keepAlive(false); updatePlayer(); return; }
+  keepAlive(true);   // started by this tap, which a phone requires
   if(P.cur && !P.failed && pageHas(S.page,P.cur) && P.audio.getAttribute("src")){ startPlay(); return; }
   if(S.current && pageHas(S.page,S.current)) return playFrom(S.current);
   const first = (PAGES[S.page]||[])[0]; if(first) playFrom(key(first[0],first[1]));
@@ -804,6 +829,7 @@ async function keepAwake(on){
 }
 document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState!=="visible") return;
+  if(P.switching && P.switchAt) plog("Back in the app; the next surah had been waiting "+((Date.now()-P.switchAt)/1000).toFixed(0)+" s");
   if(P.playing) keepAwake(true);
   // the next surah was waiting because the phone wouldn't start it in the background: carry on now
   else if(P.blocked && P.cur===P.blocked && P.audio.getAttribute("src")){ plog("Back in the app: continuing"); startPlay(); }
@@ -1004,7 +1030,7 @@ function reciterField(){
     const was=P.playing, cur=P.cur;
     P.audio.pause(); P.playing=false; P.surah=null; P.timings=null; P.timingsFor=null;
     try { P.timings = await loadTimings(S.reciter); P.timingsFor = S.reciter; } catch(e){}
-    if(was&&cur) playFrom(cur); else { P.audio.removeAttribute("src"); updatePlayer(); }
+    if(was&&cur) playFrom(cur); else { P.audio.removeAttribute("src"); keepAlive(false); updatePlayer(); }
     toast("Reciter: "+RECITERS.find(x=>x.id===S.reciter).name);
   };
   const wl = el("label",{class:"check"}); const wc = el("input",{type:"checkbox",id:"wakeChk"}); wc.checked = S.wake;

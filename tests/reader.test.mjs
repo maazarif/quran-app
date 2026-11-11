@@ -1631,8 +1631,65 @@ test("Playback log: shown newest first in the reciter settings", () => withPage(
   await page.click("#reciterBtn");
   await page.locator("#playLog summary").click();
   const lines = (await page.locator("#playLog pre").textContent()).split("\n");
-  assert.match(lines[0], /^\d\d:\d\d:\d\d Playing .*2:1$/);
-  assert.match(lines[1], /End of surah 1 \(on time\)/);
+  assert.match(lines[0], /^\d\d:\d\d:\d\d Playing .*2:1( \(started after \d+ s\))?$/, "newest first");
+  const end = lines.findIndex(l => /End of surah 1 \(on time\)/.test(l));
+  assert.ok(end > 0, lines.join(" | "));
+  assert.ok(lines.slice(1, end).every(l => /Loading the next recording/.test(l)), "only loading notes in between");
+}));
+
+/* ---------- background keep-alive: no silent moment while the next surah loads ---------- */
+const kaState = page => page.evaluate(() => window.mushafKeepAlive ? mushafKeepAlive.state : "none");
+test("Keep-alive: an inaudible signal runs from tapping play until pausing, and through the switch to the next surah", () => withPage(SURAH, async ({ page }) => {
+  await spyPage(page, PAGE_URL + "#p1");
+  assert.equal(await kaState(page), "none", "nothing before play");
+  await page.click("#playBtn");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  await page.waitForFunction(() => window.mushafKeepAlive && mushafKeepAlive.state === "running");
+  // check the switch: the signal must be running at the moment the recording pauses to change file
+  await page.evaluate(() => { const p = HTMLMediaElement.prototype.pause; mushafAudio.pause = function () { (window.__kaAtPause ||= []).push(mushafKeepAlive.state); return p.call(this); }; });
+  await moveTo(page, lastEnd(AFASY, 1) - 1.5);
+  await page.waitForSelector('#page .playing[data-k="2:1"]', { timeout: 10000 });
+  await page.waitForFunction(() => !mushafAudio.paused && /002\.mp3$/.test(mushafAudio.src));
+  assert.deepEqual(await page.evaluate(() => __kaAtPause), ["running"]);
+  assert.equal(await kaState(page), "running", "still running while the next surah plays");
+  await page.click("#playBtn"); // pause
+  await page.waitForFunction(() => mushafKeepAlive.state === "suspended");
+  await page.evaluate(() => __handlers.play()); // lock-screen play
+  await page.waitForFunction(() => mushafKeepAlive.state === "running" && !mushafAudio.paused);
+  await page.evaluate(() => __handlers.pause());
+  await page.waitForFunction(() => mushafKeepAlive.state === "suspended");
+}));
+
+test("Keep-alive signal is inaudible (peak below -78 dB) but never exact silence", async () => {
+  const src = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const m = src.match(/d\[i\] = \(Math\.random\(\)\*2 - 1\) \* ([0-9.e-]+)/);
+  assert.ok(m, "keep-alive signal found");
+  const peak = Number(m[1]);
+  assert.ok(peak > 0 && 20 * Math.log10(peak) <= -78, "peak " + 20 * Math.log10(peak) + " dB");
+});
+
+test("Playback log: a slow switch notes how long the next surah took, and that you came back while it waited", () => withPage(SURAH, async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__hold = true;
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      if (window.__hold && /002\.mp3$/.test(this.src)) return new Promise((res, rej) => { const t = setInterval(() => { if (!window.__hold) { clearInterval(t); play.call(this).then(res, rej); } }, 50); });
+      return play.call(this);
+    };
+  });
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#playBtn");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  await moveTo(page, lastEnd(AFASY, 1) - 1.5);
+  await page.waitForFunction(() => (JSON.parse(localStorage.getItem("playLog")) || []).some(l => /End of surah 1/.test(l)), null, { timeout: 10000 });
+  await page.waitForTimeout(2200);
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await page.evaluate(() => { window.__hold = false; });
+  await page.waitForFunction(() => !mushafAudio.paused && /002\.mp3$/.test(mushafAudio.src));
+  await page.waitForFunction(() => /started after/.test(localStorage.getItem("playLog")));
+  const plog = await page.evaluate(() => JSON.parse(localStorage.getItem("playLog")));
+  assert.ok(plog.some(l => /Back in the app; the next surah had been waiting [23] s/.test(l)), plog.join(" | "));
+  assert.ok(plog.some(l => /Playing .*2:1 \(started after [23] s\)/.test(l)), plog.join(" | "));
 }));
 
 await run();
