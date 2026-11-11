@@ -1692,4 +1692,28 @@ test("Playback log: a slow switch notes how long the next surah took, and that y
   assert.ok(plog.some(l => /Playing .*2:1 \(started after [23] s\)/.test(l)), plog.join(" | "));
 }));
 
+/* ---------- after An-Nas, start again from Al-Fatihah ---------- */
+test("Non-stop: after An-Nas the recitation carries on with Al-Fatihah", () => withPage(SURAH, async ({ page }) => {
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.locator("#surahJump").selectOption("114");
+  await page.waitForSelector('.ayah[data-k="114:1"]');
+  await page.click('.ayah[data-k="114:1"]'); await page.locator("#sheet button", { hasText: "Play from here" }).click();
+  await page.waitForFunction(() => /114\.mp3$/.test(mushafAudio.src));
+  await moveTo(page, lastEnd(AFASY, 114) - 1.5);
+  await page.waitForSelector('#page .playing[data-k="1:1"]', { timeout: 10000 });
+  await page.waitForFunction(() => !mushafAudio.paused && /001\.mp3$/.test(mushafAudio.src) && mushafAudio.currentTime < 3);
+  assert.equal(await page.locator(".folio").textContent(), "١", "turned to page 1");
+  const plog = await page.evaluate(() => JSON.parse(localStorage.getItem("playLog")));
+  assert.ok(plog.some(l => /End of surah 114 \(on time\), next: .*1:1/.test(l)), plog.join(" | "));
+  assert.ok(plog.some(l => /Completed the Quran; starting again from Al-Fatihah/.test(l)));
+}));
+
+test("Non-stop: ayah by ayah, An-Nas 114:6 is followed by Al-Fatihah 1:1", () => withPage({ timings: "404", audio: "ok" }, async ({ page }) => {
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.locator("#surahJump").selectOption("114");
+  await page.waitForSelector('.ayah[data-k="114:6"]');
+  await page.click('.ayah[data-k="114:6"]'); await page.locator("#sheet button", { hasText: "Play from here" }).click();
+  await page.waitForSelector('#page .playing[data-k="1:1"]', { timeout: 15000 });
+}));
+
 await run();

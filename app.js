@@ -693,14 +693,16 @@ function nextItem(){
   if(P.mode==="surah"){
     if(S.afterSurah==="repeat") return key(P.surah,1);
     if(S.afterSurah==="stop") return null;
-    return P.surah<114 ? key(P.surah+1,1) : null;
+    return P.surah<114 ? key(P.surah+1,1) : key(1,1);   // after An-Nas, start again from Al-Fatihah
   }
+  if(P.cur==="114:6" && S.afterSurah==="next") return key(1,1);
   return P.cur ? nextKey(P.cur) : null;
 }
 function advance(why){
   const now = Date.now(); if(now - advancedAt < 1500) return; advancedAt = now;
   const n = nextItem();
   if(P.mode==="surah" && why) plog("End of surah "+P.surah+" ("+why+")"+(n ? ", next: "+aname(n) : ", stopping"));
+  if(n==="1:1" && P.cur && P.cur.startsWith("114:")) plog("Completed the Quran; starting again from Al-Fatihah");
   P.switching = true; P.switchAt = Date.now(); P.waitLogged = false;
   P.audio.pause();                        // pausing keeps the audio session open
   if(!n){ P.switching = false; P.playing = false; keepAwake(false); keepAlive(false); updatePlayer(); if(P.mode==="surah" && S.afterSurah==="stop") toast("Finished the surah"); return; }
@@ -1038,7 +1040,7 @@ function reciterField(){
   wl.append(wc, "Keep the screen on while reciting");
   const as = el("label",{class:"lbl",for:"afterSel"},"After a surah");
   const asel = el("select",{id:"afterSel"});
-  for(const [v,t] of [["next","Play the next surah (non-stop)"],["repeat","Repeat the surah"],["stop","Stop"]]){ const o=el("option",{value:v},t); if(S.afterSurah===v) o.selected=true; asel.append(o); }
+  for(const [v,t] of [["next","Play the next surah (non-stop; after An-Nas, Al-Fatihah)"],["repeat","Repeat the surah"],["stop","Stop"]]){ const o=el("option",{value:v},t); if(S.afterSurah===v) o.selected=true; asel.append(o); }
   asel.onchange = ()=>{ S.afterSurah = asel.value; save(); };
   const log = el("details",{class:"plog",id:"playLog"});
   log.append(el("summary",{},"Playback log"), el("p",{class:"tr"},"What the player did recently, newest first. If recitation stops on its own, a screenshot of this helps find out why."),
