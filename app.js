@@ -596,38 +596,70 @@ function setCur(k){
    end, the loop jumps to the start and the app treats that jump as the end. */
 P.audio.loop = true;
 let lastT = 0, selfSeekAt = 0, advancedAt = 0;
-function startPlay(){
-  if(navigator.audioSession){ try { navigator.audioSession.type = "playback"; } catch(e){} }   // media playback: not muted by the silent switch
-  P.audio.play().then(()=>{ P.playing=true; P.failed=false; P.switching=false; updatePlayer(); keepAwake(true); })
-    .catch(err=>{ if(err && err.name==="AbortError") return; P.switching=false; fallbackOrFail(); });
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+/* A short playback log kept on this device (Reciter › Playback log), so a stop on a locked phone can be traced:
+   when each switch happened, whether the phone allowed the next recording to start, and whether the app was
+   in the background ([bg]). */
+const PLOG = (()=>{ try { const v = JSON.parse(localStorage.getItem("playLog")||"[]"); return Array.isArray(v) ? v : []; } catch(e){ return []; } })();
+function plog(msg){
+  const d = new Date(), t = String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");
+  PLOG.push(t+" "+(document.visibilityState==="visible" ? "" : "[bg] ")+msg);
+  while(PLOG.length > 40) PLOG.shift();
+  try { localStorage.setItem("playLog", JSON.stringify(PLOG)); } catch(e){}
+}
+const aname = k => { const [s,a] = k.split(":").map(Number); return (INDEX[s-1] ? INDEX[s-1].transliteration+" " : "")+s+":"+a; };
+// auto: started by the app itself (the next surah or ayah), not by a tap
+function startPlay(auto){
+  if(navigator.audioSession && navigator.audioSession.type!=="playback"){ try { navigator.audioSession.type = "playback"; } catch(e){} }   // media playback: not muted by the silent switch
+  const want = P.cur;
+  P.audio.play().then(()=>{ P.playing=true; P.failed=false; P.switching=false; if(P.blocked){ P.blocked=null; } if(auto && want) plog("Playing "+aname(want)); updatePlayer(); keepAwake(true); })
+    .catch(err=>{
+      if(err && err.name==="AbortError") return;
+      P.switching=false;
+      plog("The phone refused to start "+(want ? aname(want) : "audio")+" ("+(err && err.name || "error")+")");
+      // The phone didn't allow the next recording to start on its own (a locked iPhone can do this). Keep it
+      // loaded at its start, so play on the lock screen, or opening the app, carries straight on.
+      if(auto && P.mode==="surah" && err && err.name==="NotAllowedError"){ P.blocked = want; P.playing=false; keepAwake(false); updatePlayer(); return; }
+      fallbackOrFail();
+    });
 }
 function fallbackOrFail(){
   if(P.mode==="surah" && P.cur){ P.mode = "ayah"; P.surah = null; playAyahFile(P.cur); return; }
   P.playing=false; P.failed=true; updatePlayer();
 }
 function setSrc(url){ lastT = 0; P.endAt = null; P.audio.src = url; }
-function playAyahFile(k){
+function playAyahFile(k, auto){
   P.mode = "ayah"; P.cur = k; P.failed = false; setSrc(ayahUrl(k));
   if(!pageHas(S.page,k)) go(AYAH_PAGE[k],true); else markPlaying();
-  startPlay();
+  startPlay(auto);
   const n = nextKey(k); if(n) prefetch(ayahUrl(n));
 }
-function playFrom(k){
-  P.failed = false;
-  if(!useTimings()) return playAyahFile(k);
+function playFrom(k, auto){
+  P.failed = false; P.blocked = null;
+  if(!useTimings()) return playAyahFile(k, auto);
   const T = P.timings, [s,a] = k.split(":").map(Number);
   const can = T.ayat[s].filter(r=>r.length===3);
   const row = can.find(r=>r[0]===a) || can.find(r=>r[0]>a);   // an ayah missing from a recording: start at the next one
-  if(!row){ const n = s<114 ? key(s+1,1) : null; if(n) return playFrom(n); return; }
+  if(!row){ const n = s<114 ? key(s+1,1) : null; if(n) return playFrom(n, auto); return; }
   P.mode = "surah";
   const url = T.audio[s];
   if(P.surah!==s || !P.audio.src || P.audio.src!==url){ setSrc(url); P.surah = s; P.rows = T.ayat[s]; }
   // where this surah's recitation ends: switch shortly after its last ayah, before the file runs out
   P.lastEnd = Math.max(...T.ayat[s].map(r=>r[2]));
+  if(P.audio.readyState >= 1) setEnd();
   const at = (row[0]===1 ? 0 : row[1]) / 1000;   // ayah 1 starts with the Bismillah before it
   P.cur = null; setCur(key(s,row[0]));
   seekTo(at);
-  startPlay();
+  startPlay(auto);
+}
+/* When to switch to the next surah: 0.7 s after the last ayah, but at least 1.5 s before the file ends, since
+   recordings are cut close and a locked iPhone checks the time less often (a missed switch lets the file reach
+   its end, which is when iOS stops a web app's audio). Never inside the recitation itself. The length of a
+   file is an estimate that improves as it loads, so this is worked out again whenever it changes. */
+function setEnd(){
+  if(P.mode!=="surah" || !P.lastEnd) return;
+  const d = P.audio.duration*1000;
+  P.endAt = isFinite(d) && d > 0 ? Math.max(P.lastEnd, Math.min(P.lastEnd + 700, d - 1500)) : P.lastEnd + 700;
 }
 function seekTo(sec){
   selfSeekAt = Date.now(); lastT = sec;
@@ -643,32 +675,35 @@ function nextItem(){
   }
   return P.cur ? nextKey(P.cur) : null;
 }
-function advance(){
+function advance(why){
   const now = Date.now(); if(now - advancedAt < 1500) return; advancedAt = now;
   const n = nextItem();
+  if(P.mode==="surah" && why) plog("End of surah "+P.surah+" ("+why+")"+(n ? ", next: "+aname(n) : ", stopping"));
   P.switching = true;
   P.audio.pause();                        // pausing keeps the audio session open
   if(!n){ P.switching = false; P.playing = false; keepAwake(false); updatePlayer(); if(P.mode==="surah" && S.afterSurah==="stop") toast("Finished the surah"); return; }
-  if(P.mode==="surah") playFrom(n); else playAyahFile(n);
+  if(P.mode==="surah") playFrom(n, true); else playAyahFile(n, true);
 }
 let pre = null;
 function prefetch(url){ // load the next file early so the switch is instant
+  if(IOS) return;   // iPhones don't preload media in the background anyway, and a second audio element there can disturb the one playing
   if(pre && pre.dataset.url===url) return;
   try { pre = new Audio(); pre.preload = "auto"; pre.muted = true; pre.dataset.url = url; pre.src = url; pre.load(); } catch(e){}
 }
 P.audio.addEventListener("loadedmetadata", ()=>{
   if(P.seek!=null){ try { P.audio.currentTime = P.seek; } catch(e){} P.seek = null; }
-  if(P.mode==="surah" && P.lastEnd) P.endAt = Math.min(P.lastEnd + 700, P.audio.duration*1000 - 300);
+  setEnd();
 });
+P.audio.addEventListener("durationchange", setEnd);
 // the loop jumped back to the start: the file reached its end
 P.audio.addEventListener("seeking", ()=>{
   const t = P.audio.currentTime;
-  if(Date.now() - selfSeekAt > 800 && lastT > 3 && t < 1.5 && lastT - t > 2) advance();
+  if(Date.now() - selfSeekAt > 800 && lastT > 3 && t < 1.5 && lastT - t > 2) advance("the recording looped");
 });
 P.audio.addEventListener("timeupdate", ()=>{
   const t = P.audio.currentTime;
   if(P.seek==null && !P.switching){
-    if(P.mode==="surah" && P.endAt && t*1000 >= P.endAt && t >= lastT) { lastT = t; return advance(); }
+    if(P.mode==="surah" && P.endAt && t*1000 >= P.endAt && t >= lastT) { lastT = t; return advance("on time"); }
     if(P.mode==="ayah" && P.audio.duration > 1 && t >= P.audio.duration - 0.25 && t >= lastT) { lastT = t; return advance(); }
   }
   if(Date.now() - selfSeekAt > 300 || Math.abs(t - lastT) < 2) lastT = t;
@@ -681,7 +716,7 @@ P.audio.addEventListener("timeupdate", ()=>{
   if(Date.now() - posAt > 1000) updatePosition();
   if(P.endAt && P.endAt - ms < 90000){ const n = nextItem(); if(n && P.timings) prefetch(P.timings.audio[n.split(":")[0]]); }
 });
-P.audio.addEventListener("ended", advance);   // only if looping isn't honoured
+P.audio.addEventListener("ended", ()=>advance("the file ended"));   // only if looping isn't honoured
 P.audio.addEventListener("error", ()=>{ if(P.cur && P.audio.getAttribute("src")) fallbackOrFail(); });
 // pauses and plays from the lock screen, headphones, the car or a phone call
 P.audio.addEventListener("pause", ()=>{ if(P.switching) return; if(P.playing){ P.playing=false; keepAwake(false); updatePlayer(); } });
@@ -767,7 +802,12 @@ async function keepAwake(on){
     if(!on && P.lock){ const l = P.lock; P.lock = null; await l.release(); }
   } catch(e){ P.lock = null; }
 }
-document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible" && P.playing) keepAwake(true); });
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState!=="visible") return;
+  if(P.playing) keepAwake(true);
+  // the next surah was waiting because the phone wouldn't start it in the background: carry on now
+  else if(P.blocked && P.cur===P.blocked && P.audio.getAttribute("src")){ plog("Back in the app: continuing"); startPlay(); }
+});
 function markPlaying(){
   document.querySelectorAll(".playing").forEach(e=>e.classList.remove("playing"));
   if(!P.cur) return;
@@ -785,6 +825,7 @@ function updatePlayer(){
     const [s,a] = P.cur.split(":").map(Number);
     $("pTitle").textContent = INDEX[s-1].transliteration+" "+s+":"+a+" · "+rec.name;
     if(P.failed){ sub.append("Playback is blocked here. "); const l = el("a",{href:audioUrl(P.cur),target:"_blank",rel:"noopener"},P.mode==="surah"?"Open this surah's audio":"Open this ayah's audio"); sub.append(l); }
+    else if(P.blocked && !P.playing) sub.append("Ready · tap play to continue with "+INDEX[s-1].transliteration);
     else sub.append(!P.playing ? "Paused" : P.mode==="surah" ? "Playing · keeps going with the screen locked" : "Playing ayah by ayah");
     updateMediaSession(rec);
   } else { $("pTitle").textContent = rec.name; sub.append("Tap play to recite from the top of this page"); }
@@ -973,7 +1014,10 @@ function reciterField(){
   const asel = el("select",{id:"afterSel"});
   for(const [v,t] of [["next","Play the next surah (non-stop)"],["repeat","Repeat the surah"],["stop","Stop"]]){ const o=el("option",{value:v},t); if(S.afterSurah===v) o.selected=true; asel.append(o); }
   asel.onchange = ()=>{ S.afterSurah = asel.value; save(); };
-  f.append(rs, wl, as, asel); return f;
+  const log = el("details",{class:"plog",id:"playLog"});
+  log.append(el("summary",{},"Playback log"), el("p",{class:"tr"},"What the player did recently, newest first. If recitation stops on its own, a screenshot of this helps find out why."),
+    el("pre",{}, PLOG.length ? PLOG.slice().reverse().join("\n") : "Nothing yet."));
+  f.append(rs, wl, as, asel, log); return f;
 }
 
 function marksSheet(){

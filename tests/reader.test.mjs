@@ -1535,4 +1535,104 @@ test("Surah titles fit inside their frame (IndoPak printed line, every phone wid
   assert.ok(m >= 2, "Madani title line height " + m);
 }));
 
+/* ---------- end of a surah on real recordings: cut close, length unknown or changing, phone refusing ---------- */
+// Real surah files end soon after the last ayah, and a phone's idea of a file's length can be missing or change
+// while it loads. Pretend 001.mp3 has the length in window.__dur (seconds), and say when it changes.
+const FAKE_LEN = () => {
+  window.__dur = undefined;
+  const d = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "duration");
+  Object.defineProperty(HTMLMediaElement.prototype, "duration", { configurable: true, get() {
+    return /001\.mp3$/.test(this.src) && window.__dur !== undefined ? window.__dur : d.get.call(this); } });
+};
+const switchedAt = page => page.evaluate(() => { const e = __ev.find(x => x.startsWith("pause()@001")); return e ? +e.split("|")[1] : null; });
+const SPY_T = () => { // like SPY, and note where in the file each pause() call happened
+  const w = () => { if (!window.mushafAudio) return setTimeout(w, 20);
+    mushafAudio.pause = function () { __ev.push("pause()@" + this.src.split("/").pop() + "|" + this.currentTime); return HTMLMediaElement.prototype.pause.call(this); }; };
+  setTimeout(w, 50);
+};
+for (const [name, len] of [["cut 0.6 s after the last ayah", 0.6], ["length unknown (NaN)", NaN], ["length still estimated as endless", Infinity]]) {
+  test("End of surah: switches on time when the recording is " + name, () => withPage(SURAH, async ({ page }) => {
+    const end = lastEnd(AFASY, 1);
+    await page.addInitScript(FAKE_LEN);
+    await page.addInitScript(([l, e]) => { window.__dur = Number.isNaN(l) ? NaN : l === Infinity ? Infinity : e + l; }, [len, end]);
+    await spyPage(page, PAGE_URL + "#p1");
+    await page.evaluate(SPY_T);
+    await page.click("#playBtn");
+    await page.waitForSelector('#page .playing[data-k="1:1"]');
+    await moveTo(page, end - 1.5);
+    await page.waitForSelector('#page .playing[data-k="2:1"]', { timeout: 10000 });
+    await page.waitForFunction(() => !mushafAudio.paused && /002\.mp3$/.test(mushafAudio.src));
+    const at = await switchedAt(page);
+    assert.ok(at !== null && at >= end - 0.05, "not before the last ayah ends: " + at + " vs " + end);
+    assert.ok(at <= end + 0.95, "promptly after it: " + at);
+    if (len === 0.6) assert.ok(at < end + len - 0.2, "before the file runs out");
+    const plog = await page.evaluate(() => JSON.parse(localStorage.getItem("playLog")));
+    assert.ok(plog.some(l => /End of surah 1 \(on time\), next: .*2:1/.test(l)), plog.join(" | "));
+  }));
+}
+
+test("End of surah: a length estimate that shrinks while loading moves the switch earlier", () => withPage(SURAH, async ({ page }) => {
+  const end = lastEnd(AFASY, 1);
+  await page.addInitScript(FAKE_LEN);
+  await page.addInitScript(() => { window.__dur = 5000; });   // first estimate far too long
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.evaluate(SPY_T);
+  await page.click("#playBtn");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  await page.evaluate(e => { window.__dur = e + 0.4; mushafAudio.dispatchEvent(new Event("durationchange")); }, end);
+  await moveTo(page, end - 1.5);
+  await page.waitForSelector('#page .playing[data-k="2:1"]', { timeout: 10000 });
+  const at = await switchedAt(page);
+  assert.ok(at >= end - 0.05 && at < end + 0.3, "switched at the end of the recitation, before the file's real end: " + at);
+}));
+
+test("End of surah: if the phone refuses to start the next surah, it waits ready, and play or reopening the app carries on", () => withPage(SURAH, async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__refuse = true;
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      if (window.__refuse && /002\.mp3$/.test(this.src)) return Promise.reject(new DOMException("not allowed in the background", "NotAllowedError"));
+      return play.call(this);
+    };
+  });
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#playBtn");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  await moveTo(page, lastEnd(AFASY, 1) - 1.5);
+  await page.waitForFunction(() => /continue with/.test(document.querySelector("#pSub").textContent), null, { timeout: 10000 });
+  assert.match(await page.locator("#pSub").textContent(), /Ready · tap play to continue with/);
+  assert.match((await audioState(page)).src, /002\.mp3$/, "the next surah stays loaded (no switch to per-ayah files)");
+  assert.equal(await page.locator('#page [data-k="2:1"]').count() > 0, true, "showing the next surah's page");
+  let plog = await page.evaluate(() => JSON.parse(localStorage.getItem("playLog")));
+  assert.ok(plog.some(l => /refused to start .*2:1 \(NotAllowedError\)/.test(l)), plog.join(" | "));
+  // the lock screen's play button
+  await page.evaluate(() => { window.__refuse = false; __handlers.play(); });
+  await page.waitForFunction(() => !mushafAudio.paused && /002\.mp3$/.test(mushafAudio.src));
+  await page.waitForSelector('#page .playing[data-k="2:1"]');
+  assert.match(await page.locator("#pSub").textContent(), /Playing/);
+  // and again, this time by coming back to the app
+  await page.evaluate(() => { window.__refuse = true; });
+  await page.evaluate(() => __handlers.previoustrack()); // 1:7, back in surah 1
+  await page.waitForFunction(() => /001\.mp3$/.test(mushafAudio.src) && !mushafAudio.paused);
+  await moveTo(page, lastEnd(AFASY, 1) - 1.5);
+  await page.waitForFunction(() => /continue with/.test(document.querySelector("#pSub").textContent), null, { timeout: 10000 });
+  await page.evaluate(() => { window.__refuse = false; document.dispatchEvent(new Event("visibilitychange")); });
+  await page.waitForFunction(() => !mushafAudio.paused && /002\.mp3$/.test(mushafAudio.src));
+  plog = await page.evaluate(() => JSON.parse(localStorage.getItem("playLog")));
+  assert.ok(plog.some(l => /Back in the app: continuing/.test(l)));
+}));
+
+test("Playback log: shown newest first in the reciter settings", () => withPage(SURAH, async ({ page }) => {
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#playBtn");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  await moveTo(page, lastEnd(AFASY, 1) - 1.5);
+  await page.waitForSelector('#page .playing[data-k="2:1"]', { timeout: 10000 });
+  await page.click("#reciterBtn");
+  await page.locator("#playLog summary").click();
+  const lines = (await page.locator("#playLog pre").textContent()).split("\n");
+  assert.match(lines[0], /^\d\d:\d\d:\d\d Playing .*2:1$/);
+  assert.match(lines[1], /End of surah 1 \(on time\)/);
+}));
+
 await run();

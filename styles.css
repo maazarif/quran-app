@@ -357,3 +357,8 @@ input[type=range]{width:100%;accent-color:var(--frame)}
 .surah-head .nm{line-height:2.05}
 .surah-head{padding-block:1px}
 .ipl.ips .surah-head .nm{line-height:1.85}
+/* playback log in the reciter settings */
+.plog{border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:var(--chip)}
+.plog summary{cursor:pointer;font-size:.85rem;font-weight:600}
+.plog .tr{font-size:.78rem;margin:6px 0}
+.plog pre{margin:0;max-height:180px;overflow:auto;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;color:var(--ink)}
