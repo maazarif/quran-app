@@ -678,6 +678,7 @@ P.audio.addEventListener("timeupdate", ()=>{
   let row = null;
   for(const r of P.rows){ if(r[1] <= ms + 40) row = r; else break; }
   if(row) setCur(key(P.surah,row[0]));
+  if(Date.now() - posAt > 1000) updatePosition();
   if(P.endAt && P.endAt - ms < 90000){ const n = nextItem(); if(n && P.timings) prefetch(P.timings.audio[n.split(":")[0]]); }
 });
 P.audio.addEventListener("ended", advance);   // only if looping isn't honoured
@@ -699,9 +700,54 @@ function setMediaControls(){
   const ms = navigator.mediaSession, on = (a,f)=>{ try { ms.setActionHandler(a,f); } catch(e){} };
   on("play", ()=>{ if(!P.playing) togglePlay(); });
   on("pause", ()=>{ if(P.playing) togglePlay(); });
-  on("previoustrack", ()=>{ const k = P.cur && prevKey(P.cur); if(k){ P.audio.pause(); P.mode==="surah" ? playFrom(k) : playAyahFile(k); } });
-  on("nexttrack", ()=>{ const k = P.cur && nextKey(P.cur); if(k){ P.audio.pause(); P.mode==="surah" ? playFrom(k) : playAyahFile(k); } });
+  on("previoustrack", ()=>stepAyah(-1));
+  on("nexttrack", ()=>stepAyah(1));
   on("seekbackward", null); on("seekforward", null);
+  // the lock-screen progress bar covers the current ayah; dragging it moves within that ayah
+  on("seekto", d=>{ const sp = ayahSpan(); if(sp && d && d.seekTime!=null) { seekTo(sp.start + Math.max(0, Math.min(d.seekTime, sp.end - sp.start - 0.2))); updatePosition(); } });
+}
+/* Previous / next ayah, from the player, the lock screen, headphones or the car. Each ayah is a section of the
+   surah recording, so within a surah this is only a jump in time: the audio never pauses, which matters on an
+   iPhone with the screen locked, where a paused web app may not be allowed to start again. Moving into another
+   surah uses the same no-gap switch as playing straight through. */
+function stepAyah(dir){
+  if(!P.cur){ if(dir>0) togglePlay(); return; }
+  const k = dir>0 ? nextKey(P.cur) : prevKey(P.cur);
+  if(!k) return;
+  const [s,a] = k.split(":").map(Number);
+  if(P.mode==="surah" && P.surah===s && P.rows && P.audio.getAttribute("src")){
+    const row = P.rows.find(r=>r[0]===a && r.length===3);
+    if(row){
+      P.cur = null; setCur(k);
+      seekTo(row[0]===1 ? 0 : row[1]/1000);
+      updatePosition();
+      if(!P.playing) startPlay();
+      return;
+    }
+  }
+  P.switching = true;
+  P.audio.pause();                        // switching files: the pause keeps the audio session open
+  if(P.mode==="ayah") playAyahFile(k); else playFrom(k);
+}
+// where the current ayah sits in the file being played (whole file when playing ayah by ayah)
+function ayahSpan(){
+  if(!P.cur) return null;
+  if(P.mode==="surah" && P.rows){
+    const a = +P.cur.split(":")[1], i = P.rows.findIndex(r=>r[0]===a && r.length===3);
+    if(i<0) return null;
+    const r = P.rows[i], start = (a===1 ? 0 : r[1])/1000;
+    return { start, end: Math.max(start + 0.5, r[2]/1000) };
+  }
+  const d = P.audio.duration;
+  return d > 0 && isFinite(d) ? { start:0, end:d } : null;
+}
+let posAt = 0;
+function updatePosition(){
+  posAt = Date.now();
+  if(!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState) return;
+  const sp = ayahSpan(); if(!sp) return;
+  const dur = sp.end - sp.start, pos = Math.max(0, Math.min(dur, (P.seek!=null ? P.seek : P.audio.currentTime) - sp.start));
+  try { navigator.mediaSession.setPositionState({ duration: dur, position: pos, playbackRate: P.audio.playbackRate || 1 }); } catch(e){}
 }
 setMediaControls();
 function updateMediaSession(rec){
@@ -712,6 +758,7 @@ function updateMediaSession(rec){
       artwork: [{src:"icons/icon-512.png",sizes:"512x512",type:"image/png"},{src:"icons/icon-192.png",sizes:"192x192",type:"image/png"}] });
     navigator.mediaSession.playbackState = P.playing ? "playing" : "paused";
   } catch(e){}
+  updatePosition();
 }
 // optional: keep the screen on while reciting (Aa › Recitation)
 async function keepAwake(on){
@@ -1027,6 +1074,7 @@ document.addEventListener("keydown",e=>{
   if(e.key==="ArrowLeft") go(S.page+1);
   if(e.key==="ArrowRight") go(S.page-1);
 });
+$("prevAyah").onclick=()=>stepAyah(-1); $("nextAyah").onclick=()=>stepAyah(1);
 $("nextBtn").onclick=()=>go(S.page+1); $("prevBtn").onclick=()=>go(S.page-1);
 $("track").onclick=e=>{ const r = e.currentTarget.getBoundingClientRect(); go(1 + Math.round((r.right - e.clientX) / r.width * (COUNT-1))); };
 $("page").addEventListener("animationend", e => { if(e.target.classList.contains("frame")) delete $("page").dataset.turn; });

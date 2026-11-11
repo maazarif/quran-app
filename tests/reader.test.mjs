@@ -1457,4 +1457,82 @@ test("Turning a page slides the new page in, and opening a page directly does no
   assert.equal(await page.$eval("#page", p => p.dataset.side), "r");
 }));
 
+/* ---------- each ayah is a section: previous / next never pause the recitation ---------- */
+const POS = () => { window.__pos = []; const ms = navigator.mediaSession; if (ms) ms.setPositionState = st => { window.__pos.push(st); }; };
+test("Next / previous ayah within a surah only jump in time: the audio is never paused (iPhone lock screen)", () => withPage(SURAH, async ({ page }) => {
+  await page.addInitScript(POS);
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#playBtn");
+  await page.waitForFunction(() => __ev.includes("playing@001.mp3"));
+  await page.evaluate(() => { __ev.length = 0; });
+  for (const [act, k] of [["nexttrack", "1:2"], ["nexttrack", "1:3"], ["previoustrack", "1:2"]]) {
+    await page.evaluate(a => __handlers[a](), act);
+    await page.waitForSelector('#page .playing[data-k="' + k + '"]');
+    const [s, a] = k.split(":").map(Number);
+    await page.waitForFunction(t => Math.abs(mushafAudio.currentTime - t) < 0.6, startOf(AFASY, s, a));
+  }
+  const ev = await page.evaluate(() => __ev);
+  assert.ok(!ev.some(e => e.startsWith("pause")), "no pause at all: " + ev.join(","));
+  assert.equal((await audioState(page)).paused, false);
+  assert.match((await audioState(page)).src, /001\.mp3$/, "same recording");
+  // the player's own buttons do the same
+  await page.click("#nextAyah");
+  await page.waitForSelector('#page .playing[data-k="1:3"]');
+  await page.click("#prevAyah"); await page.click("#prevAyah");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  await page.waitForFunction(() => mushafAudio.currentTime < 0.6, null, { timeout: 4000 }); // ayah 1 starts with the Bismillah, at 0
+  assert.ok(!(await page.evaluate(() => __ev)).some(e => e.startsWith("pause")));
+  assert.equal(await page.locator("#prevAyah").getAttribute("aria-label"), "Previous ayah");
+}));
+
+test("Next ayah from the last ayah of a surah switches to the next surah without a gap", () => withPage(SURAH, async ({ page }) => {
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#playBtn");
+  await page.waitForFunction(() => __ev.includes("playing@001.mp3"));
+  await moveTo(page, startOf(AFASY, 1, 7) + 0.3);
+  await page.waitForSelector('#page .playing[data-k="1:7"]');
+  await page.evaluate(() => { __ev.length = 0; __handlers.nexttrack(); });
+  await page.waitForSelector('#page .playing[data-k="2:1"]', { timeout: 10000 });
+  await page.waitForFunction(() => !mushafAudio.paused && /002\.mp3$/.test(mushafAudio.src));
+  const ev = await page.evaluate(() => __ev);
+  assert.ok(!ev.some(e => e === "pause@001.mp3"), "no pause event reached the app's pause handling: " + ev.join(","));
+  assert.match(await page.locator("#pSub").textContent(), /Playing/);
+  await page.evaluate(() => __handlers.previoustrack());
+  await page.waitForSelector('#page .playing[data-k="1:7"]', { timeout: 10000 });
+  await page.waitForFunction(t => !mushafAudio.paused && /001\.mp3$/.test(mushafAudio.src) && Math.abs(mushafAudio.currentTime - t) < 0.6, startOf(AFASY, 1, 7));
+}));
+
+test("Lock-screen progress bar covers the current ayah, and dragging it moves within that ayah", () => withPage(SURAH, async ({ page }) => {
+  await page.addInitScript(POS);
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#playBtn");
+  await page.waitForFunction(() => __ev.includes("playing@001.mp3"));
+  await page.evaluate(() => __handlers.nexttrack());
+  await page.waitForSelector('#page .playing[data-k="1:2"]');
+  const row = AFASY.ayat[1].find(r => r[0] === 2);
+  await page.waitForFunction(d => __pos.some(p => Math.abs(p.duration - d) < 0.05), (row[2] - row[1]) / 1000);
+  const last = await page.evaluate(() => __pos.at(-1));
+  assert.ok(last.position >= 0 && last.position <= last.duration, JSON.stringify(last));
+  assert.ok(await page.evaluate(() => typeof __handlers.seekto === "function"));
+  await page.evaluate(() => __handlers.seekto({ seekTime: 1 }));
+  await page.waitForFunction(t => Math.abs(mushafAudio.currentTime - t) < 0.4, row[1] / 1000 + 1);
+  assert.equal(await page.locator('#page .playing[data-k="1:2"]').count() > 0, true, "still on the same ayah");
+}));
+
+test("Surah titles fit inside their frame (IndoPak printed line, every phone width)", () => withPage({}, async ({ page }) => {
+  for (const w of [360, 390, 460, 1100]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.goto(PAGE_URL + "#i2"); await page.waitForSelector(".ipl.ips .surah-head"); await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(200);
+    const r = await page.$$eval(".ipl.ips", ls => ls.map(l => [l.getBoundingClientRect().height, l.querySelector(".surah-head").getBoundingClientRect().height, getComputedStyle(l.querySelector(".nm")).lineHeight, parseFloat(getComputedStyle(l.querySelector(".nm")).fontSize)]));
+    for (const [line, head, lh, fs] of r) {
+      assert.ok(head <= line + 0.5, w + "px: title " + head + " taller than its line " + line);
+      assert.ok(parseFloat(lh) / fs >= 1.8, w + "px: line height leaves room for descenders");
+    }
+  }
+  await page.goto(PAGE_URL + "#p2"); await page.waitForSelector(".surah-head .nm");
+  const m = await page.$eval(".surah-head .nm", n => parseFloat(getComputedStyle(n).lineHeight) / parseFloat(getComputedStyle(n).fontSize));
+  assert.ok(m >= 2, "Madani title line height " + m);
+}));
+
 await run();

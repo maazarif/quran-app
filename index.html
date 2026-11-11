@@ -82,7 +82,11 @@
 
 <div class="player" id="player">
   <div class="player-in">
-    <button class="pbtn" id="playBtn" aria-label="Play recitation"><svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4l13 8-13 8z"/></svg></button>
+    <div class="pctl">
+      <button class="skip" id="prevAyah" aria-label="Previous ayah"><svg viewBox="0 0 24 24"><path d="M6 5h2.4v14H6zM19 5v14L9.5 12z"/></svg></button>
+      <button class="pbtn" id="playBtn" aria-label="Play recitation"><svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4l13 8-13 8z"/></svg></button>
+      <button class="skip" id="nextAyah" aria-label="Next ayah"><svg viewBox="0 0 24 24"><path d="M15.6 5H18v14h-2.4zM5 5v14l9.5-7z"/></svg></button>
+    </div>
     <div class="pinfo"><b id="pTitle">Recitation</b><span id="pSub">Tap play to hear this page</span></div>
     <button class="ghost" id="reciterBtn">Reciter</button>
   </div>
