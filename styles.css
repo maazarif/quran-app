@@ -54,7 +54,8 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* header */
 .bar{display:flex;align-items:center;gap:8px;padding-top:2px}
 .brand{color:var(--frame);line-height:1;margin-inline-end:auto;display:flex;align-items:center;gap:9px}
-.brand .mark{width:34px;height:34px;flex:none;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.brand .mark{width:30px;height:30px;flex:none}
+.brand .mark rect{fill:var(--gilt)} .brand .mark circle:first-of-type{fill:var(--paper)} .brand .mark circle:last-of-type{fill:var(--frame)}
 .brand .ar{font-family:var(--f-ar-ui);font-weight:700;font-size:1.5rem;padding-bottom:4px}
 .brand small{font-family:var(--f-ui);font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .icon-btn{border:1px solid var(--line);background:var(--paper);border-radius:999px;height:40px;min-width:40px;padding:0 14px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:.85rem;font-weight:600;

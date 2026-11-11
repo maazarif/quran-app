@@ -1,7 +1,7 @@
 // Service worker: makes the app installable and lets pages you've opened work offline.
-const VERSION = "mushaf-v18";
+const VERSION = "mushaf-v19";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest",
-  "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png", "icons/artwork-512.png", "icons/logo-128.png", "icons/artwork-256.png",
+  "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png", "icons/artwork-512.png", "icons/artwork-256.png",
   // the default Mushaf font and the interface fonts, so the text draws correctly the first time the app opens offline
   "fonts/quran/amiri-quran.woff", "fonts/quran/amiri-regular.woff", "fonts/quran/amiri-bold.woff", "fonts/quran/figtree.woff"];
 
