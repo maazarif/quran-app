@@ -1726,4 +1726,35 @@ test("Non-stop: ayah by ayah, An-Nas 114:6 is followed by Al-Fatihah 1:1", () =>
   await page.waitForSelector('#page .playing[data-k="1:1"]', { timeout: 15000 });
 }));
 
+/* ---------- lock-screen picture: the app's star mark, set again whenever a recording loads ---------- */
+test("Lock-screen picture is the app's star artwork (full addresses), and is set again when a new recording loads or plays", () => withPage(SURAH, async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__meta = [];
+    if (navigator.mediaSession) Object.defineProperty(navigator.mediaSession, "metadata", { configurable: true, get() { return this.__m; }, set(v) { this.__m = v; window.__meta.push({ at: Date.now(), src: mushafAudio && mushafAudio.src, art: v && [...v.artwork].map(a => a.src) }); } });
+  });
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#playBtn");
+  await page.waitForFunction(() => __ev.includes("playing@001.mp3"));
+  const art = await page.evaluate(() => __meta.at(-1).art);
+  assert.deepEqual(art.map(u => new URL(u).pathname.split("/").pop()), ["artwork-512.png", "artwork-256.png"]);
+  assert.ok(art.every(u => /^https?:\/\//.test(u)), "full addresses");
+  for (const u of art) assert.deepEqual(await page.evaluate(async u => { const r = await fetch(u); return [r.status, (await r.blob()).size > 1000]; }, u), [200, true], u);
+  // moving into the next surah: the picture is set again after the new file has loaded and started
+  await page.evaluate(() => { __meta.length = 0; });
+  await moveTo(page, lastEnd(AFASY, 1) - 1.5);
+  await page.waitForFunction(() => !mushafAudio.paused && /002\.mp3$/.test(mushafAudio.src));
+  await page.waitForFunction(() => __meta.filter(m => /002\.mp3$/.test(m.src)).length >= 2);
+  const last = await page.evaluate(() => __meta.at(-1));
+  assert.ok(last.art[0].endsWith("artwork-512.png"));
+}));
+
+test("Icons: the home-screen icons and the lock-screen artwork are the new star mark, at the sizes the manifest says", async () => {
+  const man = JSON.parse(readFileSync(new URL("../manifest.webmanifest", import.meta.url), "utf8"));
+  const png = f => { const b = readFileSync(new URL("../" + f, import.meta.url)); assert.equal(b.toString("latin1", 1, 4), "PNG", f); return [b.readUInt32BE(16), b.readUInt32BE(20)]; };
+  for (const i of man.icons) assert.deepEqual(png(i.src).join("x"), i.sizes, i.src);
+  assert.deepEqual(png("icons/apple-touch-icon.png"), [180, 180]);
+  assert.deepEqual(png("icons/artwork-512.png"), [512, 512]);
+  assert.deepEqual(png("icons/artwork-256.png"), [256, 256]);
+});
+
 await run();

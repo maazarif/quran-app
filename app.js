@@ -748,7 +748,8 @@ P.audio.addEventListener("pause", ()=>{ if(P.switching) return; if(P.playing){ P
 for(const ev of ["waiting","stalled"]) P.audio.addEventListener(ev, ()=>{ if(P.switching && P.switchAt && !P.waitLogged){ P.waitLogged = true; plog("Loading the next recording…"); } });
 P.audio.addEventListener("play", ()=>{ if(!P.playing){ P.playing=true; updatePlayer(); } });
 // iOS ignores lock-screen controls set before playback starts, so set them each time it does
-P.audio.addEventListener("playing", ()=>{ P.switching = false; setMediaControls(); });
+P.audio.addEventListener("playing", ()=>{ P.switching = false; setMediaControls(); refreshMediaSession(); });
+P.audio.addEventListener("loadedmetadata", refreshMediaSession);
 function togglePlay(){
   if(P.playing){ P.audio.pause(); P.playing=false; keepAwake(false); keepAlive(false); updatePlayer(); return; }
   keepAlive(true);   // started by this tap, which a phone requires
@@ -812,12 +813,18 @@ function updatePosition(){
   try { navigator.mediaSession.setPositionState({ duration: dur, position: pos, playbackRate: P.audio.playbackRate || 1 }); } catch(e){}
 }
 setMediaControls();
+/* The picture on the lock screen, in the car and on a watch: the app's star mark. Full web addresses, because
+   some phones don't resolve relative ones for this. Recording files can carry their own cover picture, and
+   iOS may switch to it when a new file loads, so the app's picture is set again whenever a recording loads
+   or starts playing. */
+const ARTWORK = [512, 256].map(n => ({ src: new URL("icons/artwork-"+n+".png", location.href).href, sizes: n+"x"+n, type: "image/png" }));
+function refreshMediaSession(){ const rec = RECITERS.find(r=>r.id===S.reciter); if(P.cur && rec) updateMediaSession(rec); }
 function updateMediaSession(rec){
   if(!("mediaSession" in navigator) || !P.cur) return;
   const [s,a] = P.cur.split(":").map(Number);
   try {
     navigator.mediaSession.metadata = new MediaMetadata({ title: INDEX[s-1].transliteration+" "+s+":"+a, artist: rec.name, album: "Mushaf Reader",
-      artwork: [{src:"icons/icon-512.png",sizes:"512x512",type:"image/png"},{src:"icons/icon-192.png",sizes:"192x192",type:"image/png"}] });
+      artwork: ARTWORK });
     navigator.mediaSession.playbackState = P.playing ? "playing" : "paused";
   } catch(e){}
   updatePosition();
