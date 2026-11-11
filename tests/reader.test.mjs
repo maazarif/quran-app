@@ -1757,4 +1757,13 @@ test("Icons: the home-screen icons and the lock-screen artwork are the new star 
   assert.deepEqual(png("icons/artwork-256.png"), [256, 256]);
 });
 
+test("Logo: spells القرآن الكريم exactly, and every icon is drawn from it", () => {
+  const svg = readFileSync(new URL("../design/logo/logo.svg", import.meta.url), "utf8");
+  const words = [...svg.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map(m => m[1]);
+  assert.deepEqual(words, ["القرآن", "الكريم"]);
+  assert.match(svg, /font-family="Katibeh"/);
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /<img class="mark" src="icons\/logo-128\.png"/, "header badge");
+});
+
 await run();

@@ -1,9 +1,9 @@
 # App logo
 
-The owner's calligraphy logo (القرآن الكريم on a Quran stand). The only copy available was a phone screenshot, so `logo.svg` is rebuilt from it:
+القرآن الكريم in gold calligraphy above a Quran stand, on navy. It replaces the owner's earlier logo, of which only a small screenshot survived, and is drawn from scratch so it stays sharp at every size.
 
-- **Stand:** fitted as two exact vector bars (`trace.py`).
-- **Calligraphy:** taken from the image itself (not traced or redrawn, so the letters are exactly the original's), with the dark background removed and the gold set to the logo's colour (#d0ad0e, as displayed; the screenshot is Display P3) (`hybrid.py`).
-- **Icons:** rendered by `icons2.cjs`.
-
-If a larger original turns up, put it through the same steps for sharper icons.
+- **Lettering:** set in Katibeh, a calligraphy typeface (SIL Open Font Licence, `OFL-Katibeh.txt`), from github.com/google/fonts. The two words are typed, not traced, so every letter is exact. The test suite checks the spelling.
+- **Stand:** the stand from the earlier logo, fitted as two vector bars (`stand.json`).
+- **Colours:** gold #d0ad0e, stand #424243, background #13131c (matching the earlier logo).
+- **Clear space:** a navy edge around the letters cuts them out of the stand. The drawing is framed by the measured ink of the letters, so nothing (the madda of آ included) is cut off.
+- **Rebuilding the icons:** `node build-icons.cjs` (Playwright) writes `icons/*.png`; Katibeh needs to be at the path in the script.
