@@ -76,7 +76,16 @@ let COUNT = 604;            // pages in the edition
 const AYAH_JUZ = {};        // "s:a" -> juz (same in both editions)
 // First ayah of each juz (standard Hafs division; metadata, not Quran text)
 const JUZ_FIRST = ["1:1","2:142","2:253","3:93","4:24","4:148","5:82","6:111","7:88","8:41","9:93","11:6","12:53","15:1","17:1","18:75","21:1","23:1","25:21","27:56","29:46","33:31","36:28","39:32","41:47","46:1","51:31","58:1","67:1","78:1"];
-function buildJuzMap(){ let j = 0; for(let s=1;s<=114;s++) for(let a=1;a<=SURAH_N[s-1];a++){ if(JUZ_FIRST[j]===key(s,a)) j++; AYAH_JUZ[key(s,a)] = j; } }
+/* The 240 hizb quarters (rubʿ al-hizb) of the Madani Mushaf, Hafs: where each begins. Eight make a juz, so a juz's
+   ¼, ½ and ¾ points are the starts of its 3rd, 5th and 7th quarters. From the Tanzil metadata
+   (fawazahmed0/quran-api info.json, "maqras"); its juz starts match JUZ_FIRST exactly. */
+const QUARTERS = ["1:1","2:26","2:44","2:60","2:75","2:92","2:106","2:124","2:142","2:158","2:177","2:189","2:203","2:219","2:233","2:243","2:253","2:263","2:272","2:283","3:15","3:33","3:52","3:75","3:93","3:113","3:133","3:153","3:171","3:186","4:1","4:12","4:24","4:36","4:58","4:74","4:88","4:100","4:114","4:135","4:148","4:163","5:1","5:12","5:27","5:41","5:51","5:67","5:82","5:97","5:109","6:13","6:36","6:59","6:74","6:95","6:111","6:127","6:141","6:151","7:1","7:31","7:47","7:65","7:88","7:117","7:142","7:156","7:171","7:189","8:1","8:22","8:41","8:61","9:1","9:19","9:34","9:46","9:60","9:75","9:93","9:111","9:122","10:11","10:26","10:53","10:71","10:90","11:6","11:24","11:41","11:61","11:84","11:108","12:7","12:30","12:53","12:77","12:101","13:5","13:19","13:35","14:10","14:28","15:1","15:50","16:1","16:30","16:51","16:75","16:90","16:111","17:1","17:23","17:50","17:70","17:99","18:17","18:32","18:51","18:75","18:99","19:22","19:59","20:1","20:55","20:83","20:111","21:1","21:29","21:51","21:83","22:1","22:19","22:38","22:60","23:1","23:36","23:75","24:1","24:21","24:35","24:53","25:1","25:21","25:53","26:1","26:52","26:111","26:181","27:1","27:27","27:56","27:82","28:12","28:29","28:51","28:76","29:1","29:26","29:46","30:1","30:31","30:54","31:22","32:11","33:1","33:18","33:31","33:51","33:60","34:10","34:24","34:46","35:15","35:41","36:28","36:60","37:22","37:83","37:145","38:21","38:52","39:8","39:32","39:53","40:1","40:21","40:41","40:66","41:9","41:25","41:47","42:13","42:27","42:51","43:24","43:57","44:17","45:12","46:1","46:21","47:10","47:33","48:18","49:1","49:14","50:27","51:31","52:24","53:26","54:9","55:1","56:1","56:75","57:16","58:1","58:14","59:11","60:7","62:1","63:4","65:1","66:1","67:1","68:1","69:1","70:19","72:1","73:20","75:1","76:19","78:1","80:1","82:1","84:1","87:1","90:1","94:1","100:9"];
+const AYAH_Q = {};           // ayah -> hizb quarter (0-239)
+const PART = ["", "¼", "½", "¾"];
+let juzPick = null;          // {v, k}: the juz part last chosen in the menu, and the ayah it starts at
+function buildJuzMap(){ let j = 0, q = 0; for(let s=1;s<=114;s++) for(let a=1;a<=SURAH_N[s-1];a++){ const k = key(s,a); if(JUZ_FIRST[j]===k) j++; if(QUARTERS[q]===k) q++; AYAH_JUZ[k] = j; AYAH_Q[k] = q-1; } }
+// which part of its juz an ayah is in, as the juz menu's value: "3", "3.25", "3.5" or "3.75"
+const partOf = k => { const q = AYAH_Q[k]; return String(Math.floor(q/8) + 1 + Math.floor((q%8)/2)/4); };
 const ED = {};              // edition name -> its maps
 function useEdition(name){
   const e = ED[name]; PAGES=e.pages; AYAH_PAGE=e.ayahPage; JUZ_START=e.juzStart; PAGE_JUZ=e.pageJuz;
@@ -296,7 +305,7 @@ function applyStyle(){
 }
 
 function surahHeadEl(s){
-  const info = INDEX[s-1], sh = el("div",{class:"surah-head"});
+  const info = INDEX[s-1], sh = el("div",{class:"surah-head","data-s":s});
   sh.append(el("span",{class:"meta"}, info.type==="medinan"?"مدنية":"مكية"), el("span",{class:"nm"},"سورة "+info.name), el("span",{class:"meta"},"آياتها "+AR(info.total_verses)));
   return sh;
 }
@@ -348,14 +357,18 @@ async function renderPage(){
   const ip = isIP();
   const p = S.page, list = PAGES[p] || [];
   const surahs = [...new Set(list.map(x=>x[0]))];
-  $("where").textContent = "Page "+p+" of "+COUNT+" · Juz "+PAGE_JUZ[p];
+  // the caption names the part of the juz the page reaches: "Juz 3 · ½" once the half-way point is on or before this page
+  { const lp = (PAGES[p]||[]).at(-1), last = lp ? key(lp[0],lp[1]) : null, q = last!=null ? AYAH_Q[last] : null, h = q!=null && Math.floor(q/8)+1===PAGE_JUZ[p] ? Math.floor((q%8)/2) : 0;
+    $("where").textContent = "Page "+p+" of "+COUNT+" · Juz "+PAGE_JUZ[p]+(h ? " · "+PART[h] : ""); }
   drawTrack(p);
   $("page").dataset.side = p%2 ? "r" : "l"; // odd pages sit on the right of an open Mushaf, so their spine is on the left
   $("nextBtn").disabled = p>=COUNT; $("prevBtn").disabled = p<=1;
   $("pageJump").max = COUNT;
   if(!surahs.includes(+$("surahJump").value)){ $("surahJump").value = surahs[0] || 1; $("ayahJump").value = ""; }
   $("ayahJump").max = SURAH_N[(+$("surahJump").value || 1) - 1];
-  $("juzJump").value = PAGE_JUZ[p]; $("pageJump").value = p;
+  const lp = (PAGES[p]||[]).at(-1), last = lp ? key(lp[0],lp[1]) : null;   // pages list ayat as [surah, ayah]
+  if(juzPick && !pageHas(p, juzPick.k)) juzPick = null;      // the part chosen in the menu stays shown while its page is open
+  $("juzJump").value = juzPick ? juzPick.v : last && AYAH_Q[last]!=null ? partOf(last) : String(PAGE_JUZ[p]); $("pageJump").value = p;
   try{ history.replaceState(null,"",(ip?"#i":"#p")+p) }catch(e){}
 
   // The Arabic text is bundled with the app; only translations come from the internet
@@ -396,7 +409,7 @@ async function renderPage(){
     if(s!==curSurah){
       curSurah = s;
       if(a===1){
-        const info = INDEX[s-1], sh = el("div",{class:"surah-head"});
+        const info = INDEX[s-1], sh = el("div",{class:"surah-head","data-s":s});
         sh.append(el("span",{class:"meta"}, info.type==="medinan"?"مدنية":"مكية"), el("span",{class:"nm"},"سورة "+info.name), el("span",{class:"meta"},"آياتها "+AR(info.total_verses)));
         body.append(sh);
         if(s!==1 && s!==9 && BASMALA) body.append(el("div",{class:"basmala"},BASMALA));
@@ -439,7 +452,7 @@ function layoutIndopak(body, p){
     return sp;
   };
   const surahHead = s => {
-    const info = INDEX[s-1], sh = el("div",{class:"surah-head"});
+    const info = INDEX[s-1], sh = el("div",{class:"surah-head","data-s":s});
     sh.append(el("span",{class:"meta"}, info.type==="medinan"?"مدنية":"مكية"), el("span",{class:"nm"},"سورة "+info.name), el("span",{class:"meta"},"آياتها "+AR(info.total_verses)));
     return sh;
   };
@@ -528,7 +541,7 @@ function fillJumps(){
   const sj = $("surahJump"); sj.replaceChildren();
   for(const s of INDEX){ const o = el("option",{value:s.id}, s.id+". "+s.transliteration+" · "+s.name); sj.append(o); }
   const jj = $("juzJump"); jj.replaceChildren();
-  for(let j=1;j<=30;j++) jj.append(el("option",{value:j},"Juz "+j));
+  for(let j=1;j<=30;j++) for(let h=0;h<4;h++) jj.append(el("option",{value:String(j + h/4)}, "Juz "+j+(h ? " · "+PART[h] : "")));
 }
 
 function updateCount(){ $("markCount").textContent = new Set([...S.bookmarks,...Object.keys(S.highlights)]).size; }
@@ -1186,24 +1199,38 @@ $("page").addEventListener("animationend", e => { if(e.target.classList.contains
 $("openSettings").onclick=settingsSheet; $("openMarks").onclick=marksSheet; $("scrim").onclick=closeSheet;
 $("playBtn").onclick=togglePlay;
 $("reciterBtn").onclick=()=>openSheet([el("h3",{},"Recitation"), reciterField(), el("p",{class:"empty"},"Recitation follows each ayah and turns the page as it goes. It keeps playing with the screen locked, in other apps and in the car.")]);
-$("surahJump").onchange=e=>{ const s=+e.target.value; $("ayahJump").value=""; $("ayahJump").max=SURAH_N[s-1]; go(SURAH_START[s]); };
+$("surahJump").onchange=e=>{ const s=+e.target.value; $("ayahJump").value=""; $("ayahJump").max=SURAH_N[s-1]; goToSurah(s); };
+// open the page where something is, then scroll to it once the page is drawn (and optionally mark it briefly)
+function showOnPage(k, sel, flash){
+  const find = ()=>{
+    const els = document.querySelectorAll(sel); if(!els.length) return false;
+    els[0].scrollIntoView({block:"center",behavior:"smooth"});
+    if(flash){ els.forEach(x=>x.classList.add("flash")); setTimeout(()=>els.forEach(x=>x.classList.remove("flash")), 1800); }
+    return true;
+  };
+  if(pageHas(S.page,k)) find();
+  else { go(AYAH_PAGE[k]); let n=0; const t=setInterval(()=>{ if(find() || ++n>40) clearInterval(t); },50); }
+}
+// Go to a surah: its page, scrolled to where it begins (its title)
+function goToSurah(s){ $("surahJump").value = s; showOnPage(key(s,1), '#page .surah-head[data-s="'+s+'"]', false); }
 // Go to an ayah of the chosen surah: open its page and briefly mark it
 function goToAyah(s, a){
   a = Math.max(1, Math.min(SURAH_N[s-1], a|0 || 1));
   const k = key(s,a);
   $("surahJump").value = s; $("ayahJump").value = a;
-  const mark = ()=>{
-    const els = document.querySelectorAll('#page [data-k="'+k+'"]'); if(!els.length) return false;
-    els[0].scrollIntoView({block:"center",behavior:"smooth"});
-    els.forEach(x=>x.classList.add("flash")); setTimeout(()=>els.forEach(x=>x.classList.remove("flash")), 1800);
-    return true;
-  };
-  if(pageHas(S.page,k)) mark();
-  else { go(AYAH_PAGE[k]); let n=0; const t=setInterval(()=>{ if(mark() || ++n>40) clearInterval(t); },50); }
+  showOnPage(k, '#page [data-k="'+k+'"]', true);
 }
 $("ayahJump").onchange=e=>{ if(e.target.value!=="") goToAyah(+$("surahJump").value, +e.target.value); };
 $("ayahJump").onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); e.target.blur(); } };
-$("juzJump").onchange=e=>go(JUZ_START[+e.target.value]);
+// Juz menu: the start of a juz, or its ¼, ½ or ¾ point (scrolled to and marked)
+$("juzJump").onchange=e=>{
+  const v = +e.target.value, j = Math.floor(v), h = Math.round((v-j)*4);
+  juzPick = null;
+  if(!h) return go(JUZ_START[j]);
+  const k = QUARTERS[8*(j-1) + 2*h], [s,a] = k.split(":").map(Number);
+  juzPick = { v: e.target.value, k };
+  goToAyah(s, a); $("juzJump").value = e.target.value;
+};
 $("pageJump").onchange=e=>go(+e.target.value);
 let sx=null,sy=null;
 $("page").addEventListener("touchstart",e=>{sx=e.touches[0].clientX;sy=e.touches[0].clientY},{passive:true});

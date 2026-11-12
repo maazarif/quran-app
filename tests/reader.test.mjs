@@ -1824,4 +1824,53 @@ test("Background: pausing stops the switch timer (no surprise start of the next 
   assert.equal((await audioState(page)).paused, true);
 }));
 
+/* ---------- choosing a surah scrolls to it; juz quarters (¼ ½ ¾) ---------- */
+test("Choosing a surah scrolls to where it begins on its page (not just the top of the page)", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  for (const s of ["4", "67"]) {                  // both begin far down their page in this layout
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.locator("#surahJump").selectOption(s);
+    const head = page.locator('#page .surah-head[data-s="' + s + '"]');
+    await head.waitFor();
+    assert.ok(await head.evaluate(h => h.getBoundingClientRect().top + scrollY) > 844, "surah " + s + " begins below the first screen");
+    await page.waitForFunction(s => { const r = document.querySelector('#page .surah-head[data-s="' + s + '"]').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }, s, { timeout: 4000 });
+    assert.equal(await page.locator("#surahJump").inputValue(), s);
+  }
+}, { width: 390, height: 844 }));
+
+test("Juz quarters: the list is the standard 240 hizb quarters, and every eighth is a juz start", () => {
+  const src = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const Q = JSON.parse(src.match(/const QUARTERS = (\[.*?\]);/)[1]);
+  const ref = JSON.parse(readFileSync(new URL("./reference/hizb-quarters.json", import.meta.url), "utf8"));
+  assert.deepEqual(Q, ref.maqras.map(r => r.start.chapter + ":" + r.start.verse));
+  assert.deepEqual(Q.filter((_, i) => i % 8 === 0), ref.juzs.map(r => r.start.chapter + ":" + r.start.verse));
+  // in Mushaf order, each quarter ending right where the next begins
+  const order = k => { const [s, a] = k.split(":").map(Number); return s * 1000 + a; };
+  assert.ok(Q.every((k, i) => !i || order(k) > order(Q[i - 1])));
+  for (let i = 0; i + 1 < 240; i++) { const e = ref.maqras[i].end, n = ref.maqras[i + 1].start;
+    assert.ok(n.chapter === e.chapter ? n.verse === e.verse + 1 : n.chapter === e.chapter + 1 && n.verse === 1, "quarter " + (i + 1)); }
+  assert.deepEqual(Q.slice(16, 24), ["2:253", "2:263", "2:272", "2:283", "3:15", "3:33", "3:52", "3:75"], "juz 3, quarter by quarter");
+  assert.deepEqual([234, 236, 238].map(i => Q[i]), ["82:1", "87:1", "94:1"], "juz 30: ¼ at Al-Infitar, ½ at Al-Aʿla, ¾ at Ash-Sharh");
+});
+
+test("Juz menu: each juz with its ¼, ½ and ¾ points; choosing one opens that ayah and marks it", () => withPage({}, async ({ page }) => {
+  await page.waitForSelector(READY, { timeout: 15000 });
+  const opts = await page.$$eval("#juzJump option", os => os.map(o => [o.value, o.textContent]));
+  assert.equal(opts.length, 120);
+  assert.deepEqual(opts.slice(8, 12), [["3", "Juz 3"], ["3.25", "Juz 3 · ¼"], ["3.5", "Juz 3 · ½"], ["3.75", "Juz 3 · ¾"]]);
+  for (const [v, k, part] of [["3.5", "3:15", "½"], ["3.25", "2:272", "¼"], ["30.75", "94:1", "¾"]]) {
+    await page.locator("#juzJump").selectOption(v);
+    const ayah = page.locator('#page .ayah[data-k="' + k + '"]').first();
+    await ayah.waitFor();
+    await page.waitForFunction(k => { const r = document.querySelector('#page .ayah[data-k="' + k + '"]').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }, k, { timeout: 4000 });
+    assert.match(await ayah.getAttribute("class"), /flash/, k + " marked");
+    assert.equal(await page.locator("#juzJump").inputValue(), v, "menu shows the part chosen");
+    assert.match(await page.locator("#where").textContent(), new RegExp("Juz " + Math.floor(+v) + " · " + part));
+  }
+  // the start of a juz still opens its first page
+  await page.locator("#juzJump").selectOption("2");
+  await page.waitForFunction(() => document.querySelector('#page .ayah[data-k="2:142"]'));
+  assert.equal(await page.locator("#juzJump").inputValue(), "2");
+}, { width: 390, height: 844 }));
+
 await run();
