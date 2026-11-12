@@ -720,13 +720,39 @@ P.audio.addEventListener("loadedmetadata", ()=>{
 });
 P.audio.addEventListener("durationchange", setEnd);
 // the loop jumped back to the start: the file reached its end
-P.audio.addEventListener("seeking", ()=>{
-  const t = P.audio.currentTime;
-  if(Date.now() - selfSeekAt > 800 && lastT > 3 && t < 1.5 && lastT - t > 2) advance("the recording looped");
-});
+/* Did the recording just loop back to its start? (It loops on purpose, so the phone never sees it end.)
+   In the background a phone reports the playing position far less often, so the last position seen may be
+   well before the end, and the first one after the loop well after the start: compare against where the
+   switch should have happened, not against the last instant. A jump we made ourselves never counts. */
+function looped(t){
+  if(Date.now() - selfSeekAt < 800 || P.switching || !(lastT > t + 2)) return false;
+  if(lastT > 3 && t < 1.5) return true;                          // back at the very start
+  // or seen late: last seen near the end, now somewhere in the early part
+  if(P.mode==="surah" && P.endAt){ const cut = P.endAt - Math.min(45000, P.endAt/2); return lastT*1000 >= cut && t*1000 < cut; }
+  return false;
+}
+P.audio.addEventListener("seeking", ()=>{ if(looped(P.audio.currentTime)) advance("the recording looped"); });
+/* A timer for the moment of the switch, as well as the position updates: in the background those updates can be
+   so sparse that none lands in the short gap between the last ayah and the end of the file. */
+function armEnd(){
+  clearTimeout(P.endTimer); P.endTimer = 0;
+  if(!P.playing || P.switching || P.mode!=="surah" || !P.endAt || P.seek!=null) return;
+  const ms = (P.endAt - P.audio.currentTime*1000) / (P.audio.playbackRate || 1);
+  if(ms <= 0) return;
+  P.endTimer = setTimeout(()=>{
+    P.endTimer = 0;
+    if(!P.playing || P.switching || P.mode!=="surah" || !P.endAt) return;
+    const t = P.audio.currentTime;
+    if(t*1000 >= P.endAt - 30) { lastT = t; advance("on time"); }
+    else if(looped(t)) advance("the recording looped");
+    else armEnd();   // fired early: wait the rest
+  }, Math.max(40, ms));
+}
+for(const ev of ["playing","seeked","ratechange","durationchange"]) P.audio.addEventListener(ev, ()=>setTimeout(armEnd, 0));
 P.audio.addEventListener("timeupdate", ()=>{
   const t = P.audio.currentTime;
   if(P.seek==null && !P.switching){
+    if(looped(t)) return advance("the recording looped");
     if(P.mode==="surah" && P.endAt && t*1000 >= P.endAt && t >= lastT) { lastT = t; return advance("on time"); }
     if(P.mode==="ayah" && P.audio.duration > 1 && t >= P.audio.duration - 0.25 && t >= lastT) { lastT = t; return advance(); }
   }
@@ -751,7 +777,7 @@ P.audio.addEventListener("play", ()=>{ if(!P.playing){ P.playing=true; updatePla
 P.audio.addEventListener("playing", ()=>{ P.switching = false; setMediaControls(); refreshMediaSession(); });
 P.audio.addEventListener("loadedmetadata", refreshMediaSession);
 function togglePlay(){
-  if(P.playing){ P.audio.pause(); P.playing=false; keepAwake(false); keepAlive(false); updatePlayer(); return; }
+  if(P.playing){ clearTimeout(P.endTimer); P.audio.pause(); P.playing=false; keepAwake(false); keepAlive(false); updatePlayer(); return; }
   keepAlive(true);   // started by this tap, which a phone requires
   if(P.cur && !P.failed && pageHas(S.page,P.cur) && P.audio.getAttribute("src")){ startPlay(); return; }
   if(S.current && pageHas(S.page,S.current)) return playFrom(S.current);

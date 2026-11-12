@@ -1758,4 +1758,70 @@ test("Icons: the home-screen icons and the lock-screen artwork are the new star 
 });
 
 
+/* ---------- in the background: position updates are sparse (the surah repeated all night on an iPhone) ---------- */
+const DROP_TU = () => { // let the test switch off the playing-position updates the app receives
+  window.__dropTU = false;
+  const add = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (type, fn, o) {
+    if (type === "timeupdate" && this instanceof HTMLMediaElement) { const f = fn; fn = function (e) { if (!window.__dropTU) return f.call(this, e); }; }
+    return add.call(this, type, fn, o);
+  };
+};
+test("Background: the next surah starts on time even with no position updates at all (switch timer)", () => withPage(SURAH, async ({ page }) => {
+  await page.addInitScript(DROP_TU);
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#playBtn");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  await page.evaluate(() => { window.__dropTU = true; });
+  await moveTo(page, lastEnd(AFASY, 1) - 1.5);
+  await page.waitForFunction(() => /002\.mp3$/.test(mushafAudio.src) && !mushafAudio.paused, null, { timeout: 8000 });
+  const plog = await page.evaluate(() => JSON.parse(localStorage.getItem("playLog")));
+  assert.ok(plog.some(l => /End of surah 1 \(on time\), next: .*2:1/.test(l)), plog.join(" | "));
+}));
+
+test("Background: a loop back to the start that is noticed late (8 s in) still moves on to the next surah", () => withPage(SURAH, async ({ page }) => {
+  await page.addInitScript(DROP_TU);
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#playBtn");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  await moveTo(page, lastEnd(AFASY, 1) - 6);
+  await page.waitForFunction(e => Math.abs(mushafAudio.currentTime - e) < 3, lastEnd(AFASY, 1) - 5.5);
+  await page.waitForTimeout(1200);                        // the app has seen a position near the end (and its own last seek is well past)
+  await page.evaluate(() => { window.__dropTU = true; mushafAudio.currentTime = 8; }); // the loop, first seen 8 s into the start
+  await page.waitForFunction(() => /002\.mp3$/.test(mushafAudio.src) && !mushafAudio.paused, null, { timeout: 8000 })
+  ;
+  const plog = await page.evaluate(() => JSON.parse(localStorage.getItem("playLog")));
+  assert.ok(plog.some(l => /End of surah 1 \(the recording looped\), next: .*2:1/.test(l)), plog.join(" | "));
+}));
+
+test("Background: a loop noticed late through a position update (not a seek event) also moves on", () => withPage(SURAH, async ({ page }) => {
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#playBtn");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  await moveTo(page, lastEnd(AFASY, 1) - 12);   // far enough from the end that the switch timer can't be what moves on
+  await page.waitForTimeout(1200);
+  // the loop happened while the app wasn't told: only a position update arrives, already 10 s into the start
+  await page.evaluate(() => { const a = mushafAudio; const d = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
+    Object.defineProperty(a, "currentTime", { configurable: true, get: () => 10, set: v => d.set.call(a, v) });
+    a.dispatchEvent(new Event("timeupdate"));
+    delete a.currentTime; });
+  await page.waitForFunction(() => /002\.mp3$/.test(mushafAudio.src) && !mushafAudio.paused, null, { timeout: 4000 });
+  const plog = await page.evaluate(() => JSON.parse(localStorage.getItem("playLog")));
+  assert.ok(plog.some(l => /End of surah 1 \(the recording looped\)/.test(l)), plog.join(" | "));
+}));
+
+test("Background: pausing stops the switch timer (no surprise start of the next surah)", () => withPage(SURAH, async ({ page }) => {
+  await page.addInitScript(DROP_TU);
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#playBtn");
+  await page.waitForSelector('#page .playing[data-k="1:1"]');
+  await page.evaluate(() => { window.__dropTU = true; });
+  await moveTo(page, lastEnd(AFASY, 1) - 1.5);
+  await page.waitForTimeout(150);
+  await page.click("#playBtn"); // pause
+  await page.waitForTimeout(2500);
+  assert.match((await audioState(page)).src, /001\.mp3$/);
+  assert.equal((await audioState(page)).paused, true);
+}));
+
 await run();
