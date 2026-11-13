@@ -1884,4 +1884,42 @@ test("Inside the iPhone/iPad app (window.mushafNative), the Install button stays
   assert.equal(await page.locator("#installBtn").isHidden(), true);
 }));
 
+/* ---------- CarPlay diagnostics: loading gaps, stops by the phone, background helper switch ---------- */
+const plogOf = page => page.evaluate(() => JSON.parse(localStorage.getItem("playLog") || "[]"));
+test("Playback log: notes gaps while the recording loads, and stops the phone makes (not the person's pauses)", () => withPage(SURAH, async ({ page }) => {
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#playBtn");
+  await page.waitForFunction(() => __ev.includes("playing@001.mp3"));
+  await page.waitForTimeout(300);
+  // a loading gap of about 0.8 s
+  await page.evaluate(async () => { mushafAudio.dispatchEvent(new Event("waiting")); await new Promise(r => setTimeout(r, 800)); mushafAudio.dispatchEvent(new Event("playing")); });
+  let log = await plogOf(page);
+  assert.ok(log.some(l => /Gap of 0\.[789] s while the recording loaded at .*1:\d/.test(l)), log.join(" | "));
+  // the person pauses: not logged as a stop by the phone
+  await page.click("#playBtn"); await page.waitForTimeout(200);
+  assert.ok(!(await plogOf(page)).some(l => /Stopped by the phone/.test(l)));
+  // play again, then the phone stops it (as a call or a change of speaker would)
+  await page.click("#playBtn"); await page.waitForFunction(() => !mushafAudio.paused); await page.waitForTimeout(1200);
+  await page.evaluate(() => HTMLMediaElement.prototype.pause.call(mushafAudio));
+  await page.waitForFunction(() => /Stopped by the phone/.test(localStorage.getItem("playLog")));
+  assert.match(await page.locator("#pSub").textContent(), /Paused/);
+}));
+
+test("Background helper can be switched off in Reciter settings; then no extra audio runs", () => withPage(SURAH, async ({ page }) => {
+  await spyPage(page, PAGE_URL + "#p1");
+  await page.click("#reciterBtn");
+  const chk = page.locator("#bgSignalChk");
+  assert.equal(await chk.isChecked(), true, "on by default");
+  assert.match(await page.locator("label:has(#bgSignalChk)").textContent(), /Background helper/);
+  await chk.uncheck();
+  await page.click("#sheetClose");
+  await page.click("#playBtn");
+  await page.waitForFunction(() => __ev.includes("playing@001.mp3"));
+  assert.equal(await page.evaluate(() => window.mushafKeepAlive ? mushafKeepAlive.state : "none"), "none");
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("mushaf:bgSignal"))), false, "remembered");
+  // switching it back on while reciting starts it straight away
+  await page.click("#reciterBtn"); await page.locator("#bgSignalChk").check();
+  await page.waitForFunction(() => window.mushafKeepAlive && mushafKeepAlive.state === "running");
+}));
+
 await run();

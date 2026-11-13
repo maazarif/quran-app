@@ -49,13 +49,13 @@ const store = {
 const COLORS_OK = c => ["amber","green","blue","rose"].includes(c) ? c : "amber";
 const S = {
   page: store.get("page",1), script: store.get("script","amiriq"), size: store.get("size",1.75),
-  hlColor: COLORS_OK(store.get("hlColor","amber")), tapAction: store.get("tapAction","mark")==="menu" ? "menu" : "mark", current: store.get("current",null), wake: store.get("wake",false), afterSurah: ["next","repeat","stop"].includes(store.get("afterSurah","next")) ? store.get("afterSurah","next") : "next", paper: store.get("paper","auto"), layout: store.get("layout","page")==="side" ? "side" : "page", ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), tsize: Math.min(1.8, Math.max(0.8, +store.get("tsize",0.95) || 0.95)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
+  hlColor: COLORS_OK(store.get("hlColor","amber")), tapAction: store.get("tapAction","mark")==="menu" ? "menu" : "mark", current: store.get("current",null), wake: store.get("wake",false), bgSignal: store.get("bgSignal",true), afterSurah: ["next","repeat","stop"].includes(store.get("afterSurah","next")) ? store.get("afterSurah","next") : "next", paper: store.get("paper","auto"), layout: store.get("layout","page")==="side" ? "side" : "page", ipScale: Math.min(2.2, Math.max(1, +store.get("ipScale",1) || 1)), tsize: Math.min(1.8, Math.max(0.8, +store.get("tsize",0.95) || 0.95)), trans: store.get("trans","en"), translit: store.get("translit",false), reciter: store.get("reciter","Alafasy_128kbps"),
   bookmarks: store.get("bookmarks",[]), highlights: store.get("highlights",{}), sel:null
 };
 if(!SCRIPTS.some(x=>x.id===S.script)) S.script="amiriq";
 if(!TRANSLATIONS.some(x=>x.id===S.trans)) S.trans="en";
 if(!RECITERS.some(x=>x.id===S.reciter)) S.reciter="Alafasy_128kbps";
-const save = () => ["page","script","size","hlColor","tapAction","current","wake","afterSurah","paper","tsize","layout","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
+const save = () => ["page","script","size","hlColor","tapAction","current","wake","bgSignal","afterSurah","paper","tsize","layout","ipScale","trans","translit","reciter","bookmarks","highlights"].forEach(k=>store.set(k,S[k]));
 
 /* ---------- data ---------- */
 // On its own site the app can download the JSON files directly (they are served with CORS).
@@ -617,7 +617,7 @@ const PLOG = (()=>{ try { const v = JSON.parse(localStorage.getItem("playLog")||
 function plog(msg){
   const d = new Date(), t = String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");
   PLOG.push(t+" "+(document.visibilityState==="visible" ? "" : "[bg] ")+msg);
-  while(PLOG.length > 40) PLOG.shift();
+  while(PLOG.length > 80) PLOG.shift();
   try { localStorage.setItem("playLog", JSON.stringify(PLOG)); } catch(e){}
 }
 /* Background keep-alive. While the next surah's recording loads there is a moment with no sound, and iOS puts a
@@ -627,6 +627,7 @@ function plog(msg){
 let KA = null;
 function keepAlive(on){
   try {
+    if(on && !S.bgSignal) on = false;      // switched off in Reciter settings
     if(on){
       if(!KA){
         const C = window.AudioContext || window.webkitAudioContext; if(!C) return;
@@ -634,6 +635,8 @@ function keepAlive(on){
         for(let i=0;i<n;i++) d[i] = (Math.random()*2 - 1) * 1e-4;   // not exact silence, which a phone may treat as "not playing"
         const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(ctx.destination); src.start();
         KA = ctx; window.mushafKeepAlive = ctx;
+        // "interrupted" is iOS taking the audio away (a call, Siri, a change of speaker such as CarPlay)
+        ctx.onstatechange = () => { if(ctx.state === "interrupted" || (ctx.state === "suspended" && P.playing)) plog("Background signal "+ctx.state+(P.cur ? " at "+aname(P.cur) : "")); };
       }
       if(KA.state !== "running") KA.resume().catch(()=>{});
     } else if(KA && KA.state === "running") KA.suspend().catch(()=>{});
@@ -780,9 +783,15 @@ P.audio.addEventListener("timeupdate", ()=>{
   if(P.endAt && P.endAt - ms < 90000){ const n = nextItem(); if(n && P.timings) prefetch(P.timings.audio[n.split(":")[0]]); }
 });
 P.audio.addEventListener("ended", ()=>advance("the file ended"));   // only if looping isn't honoured
-P.audio.addEventListener("error", ()=>{ if(P.cur && P.audio.getAttribute("src")) fallbackOrFail(); });
+P.audio.addEventListener("error", ()=>{ const e = P.audio.error; if(P.cur && P.audio.getAttribute("src")){ plog("Recording error "+(e ? e.code : "")+(P.cur ? " at "+aname(P.cur) : "")); fallbackOrFail(); } });
 // pauses and plays from the lock screen, headphones, the car or a phone call
-P.audio.addEventListener("pause", ()=>{ if(P.switching) return; if(P.playing){ P.playing=false; keepAwake(false); keepAlive(false); updatePlayer(); } });
+let userPause = 0;   // set when the person pauses (in the app or with lock-screen / car controls)
+P.audio.addEventListener("pause", ()=>{ if(P.switching) return; if(P.playing){
+  if(Date.now() - userPause > 1000 && !P.audio.ended) plog("Stopped by the phone"+(P.cur ? " at "+aname(P.cur) : "")+" (a call, another app, or a change of speaker)");
+  P.playing=false; keepAwake(false); keepAlive(false); updatePlayer(); } });
+let stallAt = 0;
+P.audio.addEventListener("waiting", ()=>{ if(!P.switching && P.playing && !stallAt) stallAt = Date.now(); });
+P.audio.addEventListener("playing", ()=>{ if(stallAt){ const w = (Date.now()-stallAt)/1000; stallAt = 0; if(w >= 0.3) plog("Gap of "+w.toFixed(1)+" s while the recording loaded"+(P.cur ? " at "+aname(P.cur) : "")); } });
 // while the next surah loads: note in the log if it has to wait for the network
 for(const ev of ["waiting","stalled"]) P.audio.addEventListener(ev, ()=>{ if(P.switching && P.switchAt && !P.waitLogged){ P.waitLogged = true; plog("Loading the next recording…"); } });
 P.audio.addEventListener("play", ()=>{ if(!P.playing){ P.playing=true; updatePlayer(); } });
@@ -790,7 +799,7 @@ P.audio.addEventListener("play", ()=>{ if(!P.playing){ P.playing=true; updatePla
 P.audio.addEventListener("playing", ()=>{ P.switching = false; setMediaControls(); refreshMediaSession(); });
 P.audio.addEventListener("loadedmetadata", refreshMediaSession);
 function togglePlay(){
-  if(P.playing){ clearTimeout(P.endTimer); P.audio.pause(); P.playing=false; keepAwake(false); keepAlive(false); updatePlayer(); return; }
+  if(P.playing){ userPause = Date.now(); clearTimeout(P.endTimer); P.audio.pause(); P.playing=false; keepAwake(false); keepAlive(false); updatePlayer(); return; }
   keepAlive(true);   // started by this tap, which a phone requires
   if(P.cur && !P.failed && pageHas(S.page,P.cur) && P.audio.getAttribute("src")){ startPlay(); return; }
   if(S.current && pageHas(S.page,S.current)) return playFrom(S.current);
@@ -1084,6 +1093,9 @@ function reciterField(){
   const wl = el("label",{class:"check"}); const wc = el("input",{type:"checkbox",id:"wakeChk"}); wc.checked = S.wake;
   wc.onchange = ()=>{ S.wake = wc.checked; save(); keepAwake(P.playing && S.wake); };
   wl.append(wc, "Keep the screen on while reciting");
+  const bl = el("label",{class:"check"}); const bc = el("input",{type:"checkbox",id:"bgSignalChk"}); bc.checked = S.bgSignal;
+  bc.onchange = ()=>{ S.bgSignal = bc.checked; save(); keepAlive(P.playing); plog("Background helper "+(S.bgSignal ? "on" : "off")); };
+  bl.append(bc, "Background helper: an inaudible sound that keeps a minimised iPhone app from sleeping between surahs. Try turning it off if audio breaks up in the car.");
   const as = el("label",{class:"lbl",for:"afterSel"},"After a surah");
   const asel = el("select",{id:"afterSel"});
   for(const [v,t] of [["next","Play the next surah (non-stop; after An-Nas, Al-Fatihah)"],["repeat","Repeat the surah"],["stop","Stop"]]){ const o=el("option",{value:v},t); if(S.afterSurah===v) o.selected=true; asel.append(o); }
@@ -1091,7 +1103,7 @@ function reciterField(){
   const log = el("details",{class:"plog",id:"playLog"});
   log.append(el("summary",{},"Playback log"), el("p",{class:"tr"},"What the player did recently, newest first. If recitation stops on its own, a screenshot of this helps find out why."),
     el("pre",{}, PLOG.length ? PLOG.slice().reverse().join("\n") : "Nothing yet."));
-  f.append(rs, wl, as, asel, log); return f;
+  f.append(rs, wl, bl, as, asel, log); return f;
 }
 
 function marksSheet(){
