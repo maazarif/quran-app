@@ -1,5 +1,8 @@
 import UIKit
 import WebKit
+import os
+
+private let log = Logger(subsystem: "io.github.maazarif.mushaf", category: "web")
 
 /// Shows the Mushaf Reader web app full-screen. Its pages, text and fonts come from the published web app, and
 /// pages that have been opened stay available offline (the web app's service worker).
@@ -37,6 +40,7 @@ final class MushafViewController: UIViewController, WKNavigationDelegate, WKUIDe
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { return decisionHandler(.cancel) }
         let own = url.host == Self.home.host && url.path.hasPrefix("/quran-app")
+        log.notice("navigation \(url.absoluteString, privacy: .public) main=\(action.targetFrame?.isMainFrame ?? false) own=\(own)")
         if own || ["about", "blob", "data"].contains(url.scheme ?? "") || action.targetFrame?.isMainFrame == false {
             return decisionHandler(.allow)
         }
@@ -51,10 +55,23 @@ final class MushafViewController: UIViewController, WKNavigationDelegate, WKUIDe
         return nil
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { offline.isHidden = true }
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { log.notice("committed \(webView.url?.absoluteString ?? "", privacy: .public)") }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        offline.isHidden = true
+        log.notice("finished \(webView.url?.absoluteString ?? "", privacy: .public)")
+        webView.evaluateJavaScript("document.title + ' | ' + document.readyState + ' | text ' + document.body.innerText.length") { r, e in
+            log.notice("page: \(String(describing: r ?? e), privacy: .public)")
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        log.error("failed \(error.localizedDescription, privacy: .public)")
+    }
 
     /// No connection the very first time (before anything is saved for offline reading).
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        log.error("could not load: \(error.localizedDescription, privacy: .public) \((error as NSError).code)")
         offline.isHidden = false
     }
 

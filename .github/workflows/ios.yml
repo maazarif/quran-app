@@ -25,8 +25,12 @@ jobs:
           echo "Simulator $UDID"; xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" build/sim/Build/Products/Debug-iphonesimulator/Mushaf.app
           xcrun simctl launch "$UDID" io.github.maazarif.mushaf
-          sleep 45; mkdir -p out; xcrun simctl io "$UDID" screenshot out/iphone-light.png
+          mkdir -p out
+          sleep 15; xcrun simctl io "$UDID" screenshot out/iphone-15s.png
+          sleep 30; xcrun simctl io "$UDID" screenshot out/iphone-light.png
           xcrun simctl ui "$UDID" appearance dark; sleep 8; xcrun simctl io "$UDID" screenshot out/iphone-dark.png
+          xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'subsystem == "io.github.maazarif.mushaf" OR (process == "Mushaf" AND messageType >= 16) OR (process CONTAINS "WebContent" AND messageType >= 16)' > out/app-log.txt 2>&1 || true
+          tail -60 out/app-log.txt
           plutil -p build/sim/Build/Products/Debug-iphonesimulator/Mushaf.app/Info.plist | grep -E "UIBackgroundModes|audio|WKAppBound|github|CFBundleIdentifier" > out/info.txt || true
       - uses: actions/upload-artifact@v4
         with: { name: mushaf-ios, path: ios/out }
