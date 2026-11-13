@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mushaf Reader · Privacy</title>
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<style>
+  :root{--bg:#e3e8e2;--paper:#fbf8ee;--ink:#1d2421;--muted:#5b6962;--green:#1f5a4b;--line:#d3dbd3;color-scheme:light}
+  @media (prefers-color-scheme:dark){:root{--bg:#0c1311;--paper:#161f1c;--ink:#ebe4cf;--muted:#9aa89f;--green:#5aa58d;--line:#2a3632;color-scheme:dark}}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+  main{max-width:680px;margin:0 auto;padding:32px max(16px,env(safe-area-inset-left)) 48px;display:flex;flex-direction:column;gap:14px}
+  section{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+  h1{margin:0;font-size:1.6rem;color:var(--green)} h2{margin:0 0 6px;font-size:1.05rem} p,ul{margin:0} ul{padding-left:1.2em} li{margin:4px 0}
+  .muted{color:var(--muted);font-size:.9rem} a{color:var(--green)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy</h1>
+  <p class="muted">Mushaf Reader: the web app at maazarif.github.io/quran-app and its Android and iOS apps. Last updated 12 November 2026.</p>
+  <section><h2>No accounts, no tracking</h2>
+    <p>The app has no sign-in, no advertising and no analytics. It does not collect, sell or share personal information.</p></section>
+  <section><h2>What stays on your device</h2>
+    <p>Your bookmarks, highlights, last page, settings and a short playback log are saved only on your device, in the app's own storage. They are never sent anywhere. Deleting the app (or clearing its data) removes them.</p></section>
+  <section><h2>What the app downloads</h2>
+    <p>To show pages and play recitation, the app downloads files from these services. Like any website, they receive your device's IP address and basic request details:</p>
+    <ul>
+      <li>GitHub Pages: the app itself, the Quran text, fonts and recitation timings</li>
+      <li>jsDelivr: translations and the page layout of the Mushaf</li>
+      <li>MP3Quran, Tarteel, QuranicAudio and EveryAyah: recitation audio</li>
+    </ul></section>
+  <section><h2>Contact</h2>
+    <p>Questions about this policy: open an issue at <a href="https://github.com/maazarif/quran-app/issues">github.com/maazarif/quran-app</a>.</p></section>
+</main>
+</body>
+</html>
