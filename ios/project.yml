@@ -1,0 +1,42 @@
+# Mushaf Reader for iPhone and iPad. Generate the Xcode project with:  brew install xcodegen && xcodegen
+name: Mushaf
+options:
+  bundleIdPrefix: io.github.maazarif
+  deploymentTarget: { iOS: "16.0" }
+  createIntermediateGroups: true
+targets:
+  Mushaf:
+    type: application
+    platform: iOS
+    sources: [Mushaf]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.maazarif.mushaf
+        PRODUCT_NAME: Mushaf
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        # DEVELOPMENT_TEAM: set your Apple team ID here (or in Xcode) to run on a phone or upload to the App Store
+    info:
+      path: Mushaf/Info.plist
+      properties:
+        CFBundleDisplayName: Mushaf
+        CFBundleName: Mushaf
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        # keep reciting with the screen locked, in other apps and in the car
+        UIBackgroundModes: [audio]
+        # the app's own website: lets it keep pages for offline reading (service worker)
+        WKAppBoundDomains: [maazarif.github.io]
+        UILaunchScreen:
+          UIColorName: Ground
+          UIImageName: LaunchStar
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UIStatusBarStyle: UIStatusBarStyleDefault

@@ -1,0 +1,30 @@
+# Builds the iPhone/iPad app on a Mac, runs it on the iOS Simulator and saves a screenshot.
+# Uploading to TestFlight / the App Store needs an Apple Developer account (see ios/README.md).
+name: iOS app
+on:
+  push:
+    branches: [main]
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15
+    defaults: { run: { working-directory: ios } }
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen && xcodegen generate
+      - name: Build for iPhone (device, unsigned) — checks it compiles for real phones
+        run: xcodebuild -project Mushaf.xcodeproj -scheme Mushaf -sdk iphoneos -configuration Release -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO build | tail -5
+      - name: Build for the Simulator
+        run: xcodebuild -project Mushaf.xcodeproj -scheme Mushaf -sdk iphonesimulator -configuration Debug -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO build | tail -5
+      - name: Run it on an iPhone simulator and take screenshots
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k in sorted(d, reverse=True) if 'iOS' in k for x in d[k] if x['name'].startswith('iPhone')))")
+          echo "Simulator $UDID"; xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" build/sim/Build/Products/Debug-iphonesimulator/Mushaf.app
+          xcrun simctl launch "$UDID" io.github.maazarif.mushaf
+          sleep 45; mkdir -p out; xcrun simctl io "$UDID" screenshot out/iphone-light.png
+          xcrun simctl ui "$UDID" appearance dark; sleep 8; xcrun simctl io "$UDID" screenshot out/iphone-dark.png
+          plutil -p build/sim/Build/Products/Debug-iphonesimulator/Mushaf.app/Info.plist | grep -E "UIBackgroundModes|audio|WKAppBound|github|CFBundleIdentifier" > out/info.txt || true
+      - uses: actions/upload-artifact@v4
+        with: { name: mushaf-ios, path: ios/out }
