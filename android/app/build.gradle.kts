@@ -7,7 +7,7 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "io.github.maazarif.mushaf"
-        minSdk = 23
+        minSdk = 24                         // Android 7.0, the oldest the TWA library supports
         targetSdk = 36                      // Google Play requires Android 16 (API 36) since 31 August 2026
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
