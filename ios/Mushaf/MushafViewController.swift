@@ -17,6 +17,10 @@ final class MushafViewController: UIViewController, WKNavigationDelegate, WKUIDe
         config.mediaTypesRequiringUserActionForPlayback = []      // recitation starts from the app's own play button
         config.limitsNavigationsToAppBoundDomains = true          // with WKAppBoundDomains: enables offline pages
         config.websiteDataStore = .default()                      // bookmarks, highlights and settings persist
+        // tell the web app it is inside the iPhone/iPad app (it then hides its "Install" button)
+        config.userContentController.addUserScript(WKUserScript(
+            source: "window.mushafNative = 'ios'; document.documentElement.dataset.native = 'ios';",
+            injectionTime: .atDocumentStart, forMainFrameOnly: true))
         webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = self
         webView.uiDelegate = self

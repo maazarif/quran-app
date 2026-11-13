@@ -1291,7 +1291,7 @@ start();
 
 /* ---------- installable app ---------- */
 let installEvt = null;
-window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; $("installBtn").hidden = false; });
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; if(!window.mushafNative) $("installBtn").hidden = false; });
 window.addEventListener("appinstalled", () => { $("installBtn").hidden = true; toast("Installed"); });
 $("installBtn").onclick = async () => {
   if(installEvt){ installEvt.prompt(); await installEvt.userChoice; installEvt = null; $("installBtn").hidden = true; return; }
@@ -1299,7 +1299,8 @@ $("installBtn").onclick = async () => {
     el("p",{class:"tr"},"iPhone or iPad: open this page in Safari, tap Share, then Add to Home Screen."),
     el("p",{class:"tr"},"Android: open the browser menu, then tap Install app or Add to Home screen.")]);
 };
-const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+// already an app: installed from the home screen, or inside the iPhone/iPad app (which sets window.mushafNative)
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone || !!window.mushafNative;
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 if(!standalone && isIOS) $("installBtn").hidden = false;
 if("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")){

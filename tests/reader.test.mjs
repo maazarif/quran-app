@@ -1873,4 +1873,15 @@ test("Juz menu: each juz with its ¼, ½ and ¾ points; choosing one opens that 
   assert.equal(await page.locator("#juzJump").inputValue(), "2");
 }, { width: 390, height: 844 }));
 
+test("Inside the iPhone/iPad app (window.mushafNative), the Install button stays hidden", () => withPage({}, async ({ page }) => {
+  await page.addInitScript(() => {
+    window.mushafNative = "ios";
+    Object.defineProperty(navigator, "userAgent", { get: () => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148" });
+  });
+  await page.goto(PAGE_URL);
+  await page.waitForSelector(READY, { timeout: 15000 });
+  await page.evaluate(() => window.dispatchEvent(Object.assign(new Event("beforeinstallprompt"), { prompt() {}, userChoice: Promise.resolve() })));
+  assert.equal(await page.locator("#installBtn").isHidden(), true);
+}));
+
 await run();
