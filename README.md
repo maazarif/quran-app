@@ -2,6 +2,12 @@
 
 An installable Quran web app with two Mushaf editions: the 604-page Madani Mushaf (Uthmani script, four font styles) and the 610-page IndoPak 15-line Taj Mushaf (Nastaleeq script, with the printed copy's exact line breaks). It has page colours (auto, white, cream, sepia, mint, night, black), 10 translations (below the page, or side by side with the Arabic), 8 reciters, bookmarks and highlights. By default, tapping an ayah marks your place (one ayah at a time; press and hold for bookmark, highlight, copy and play); lasting highlights come from the highlighter button. Both can be changed in settings. Recitation plays a whole surah as one recording; previous and next (in the player, on the lock screen, on headphones or in the car) move ayah by ayah without pausing. It installs to a phone's home screen and works offline for pages you have already opened. The Prayer button in the header opens the companion app, [Muslim Companion](https://maazarif.github.io/muslim-companion/), for prayer times, qibla, athkar, duas and hadith.
 
+## Android and iPhone apps
+
+- **Android** (`android/`): a Trusted Web Activity that opens the web app full-screen. Every build is on the **android-latest** release: `mushaf-test.apk` to install and try, `mushaf-release.aab` for Google Play. See `android/README.md`.
+- **iPhone and iPad** (`ios/`): a native app that shows the web app, with background audio (keeps reciting with the screen locked), the silent switch ignored, and pauses for navigation prompts. It is built and run on the iOS Simulator for every change. See `ios/README.md`.
+- Both load the published web app, so web updates reach them without a new store release. Privacy policy: `privacy.html`.
+
 ## Put it online (free, about 5 minutes)
 
 The app is a plain folder of files. Any static host works; it must be served over **https** for installing and offline use.
