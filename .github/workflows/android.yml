@@ -69,15 +69,25 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
+          profile: pixel_6
           script: |
+            adb shell 'echo "_ --disable-fre --no-default-browser-check --no-first-run" > /data/local/tmp/chrome-command-line'
+            adb shell am set-debug-app --persistent com.android.chrome
             adb install -r out/mushaf-test.apk
             adb shell am start -n io.github.maazarif.mushaf/com.google.androidbrowserhelper.trusted.LauncherActivity
             sleep 45
             adb exec-out screencap -p > out/android-screenshot.png
             adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | head -3 > out/emulator-activity.txt || true
+      - name: Check the website's verification file (Google's Digital Asset Links API)
+        run: |
+          curl -sS https://maazarif.github.io/.well-known/assetlinks.json > out/assetlinks-live.json || true
+          for fp in $(python3 -c "import json;print(' '.join(json.load(open('out/assetlinks-live.json'))[0]['target']['sha256_cert_fingerprints']))" 2>/dev/null); do
+            curl -sS "https://digitalassetlinks.googleapis.com/v1/assetlinks:check?source.web.site=https://maazarif.github.io&relation=delegate_permission/common.handle_all_urls&target.android_app.package_name=io.github.maazarif.mushaf&target.android_app.certificate.sha256_fingerprint=$fp" | tr -d '\n' | sed "s/^/$fp /" >> out/assetlinks-check.txt; echo >> out/assetlinks-check.txt
+          done
+          cat out/assetlinks-check.txt
       - name: Save the screenshot to the native-builds-android branch
         run: |
-          mkdir shots && cp out/*.png out/*.txt shots/ 2>/dev/null; cd shots
+          mkdir shots && cp out/*.png out/*.txt out/*.json shots/ 2>/dev/null; cd shots
           git init -q -b native-builds-android && git config user.name "github-actions[bot]" && git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A && git commit -q -m "Android screenshot ${GITHUB_SHA::7}"
           git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" native-builds-android
