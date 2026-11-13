@@ -1,0 +1,5 @@
+  "CFBundleIdentifier" => "io.github.maazarif.mushaf"
+  "UIBackgroundModes" => [
+    0 => "audio"
+  "WKAppBoundDomains" => [
+    0 => "maazarif.github.io"

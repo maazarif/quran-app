@@ -1,0 +1,21 @@
+getpwuid_r did not find a match for uid 501
+Timestamp               Ty Process[PID:TID]
+2026-11-13 04:55:28.234 F  Mushaf[8978:7bb3] [com.apple.runtime-issues:UIKit App Config] `UIScene` lifecycle will soon be required. Failure to adopt will result in an assert in the future.
+2026-11-13 04:55:29.022 E  Mushaf[8978:7bb3] [com.apple.CFBundle:plugin] AddInstanceForFactory: No factory registered for id <CFUUID 0x60000021c0e0> F8BB1C28-BAE8-11D6-9C31-00039315CD46
+2026-11-13 04:55:29.787 E  Mushaf[8978:7c1e] [com.apple.extensionkit:default] Failed to resolve host network app id to config: bundleID: com.apple.WebKit.Networking instance ID: Optional([_EXExtensionInstanceIdentifier: C6F61B62-9DF3-42F8-B142-CC37C84ACA91])
+2026-11-13 04:55:30.245 E  Mushaf[8978:7bd4] [com.apple.app_launch_measurement:General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+2026-11-13 04:55:30.472 E  Mushaf[8978:7bcd] [com.apple.app_launch_measurement:General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics
+2026-11-13 04:55:31.523 F  Mushaf[8978:7bb3] [com.apple.WebKit:Process] Networking process (0x10e0e3040) took 1.738863 seconds to launch
+2026-11-13 04:55:32.033 E  Mushaf[8978:7bb3] [com.apple.WebKit:ResourceLoadStatistics] Failed to request storage access quirks from WebPrivacy.
+2026-11-13 04:55:32.033 E  Mushaf[8978:7bb3] [com.apple.WebKit:ResourceLoadStatistics] Failed to request storage access user agent string quirks from WebPrivacy.
+2026-11-13 04:55:32.034 E  Mushaf[8978:7bb3] [com.apple.WebKit:ResourceLoadStatistics] Failed to request known fingerprinting scripts from WebPrivacy: Error Domain=WebPrivacyErrorDomain Code=1001 "List data not found" UserInfo={NSLocalizedDescription=List data not found}
+2026-11-13 04:55:32.362 Df Mushaf[8978:7bb3] [io.github.maazarif.mushaf:web] navigation https://maazarif.github.io/quran-app/ main=true own=true
+2026-11-13 04:55:32.421 E  Mushaf[8978:7bb3] [com.apple.WebKit:ResourceLoadStatistics] Failed to request query parameters from WebPrivacy.
+2026-11-13 04:55:33.680 E  Mushaf[8978:7c61] [com.apple.WebKit:ResourceLoadStatistics] WebContent[8987] Unable to filter tracking query parameters (missing data)
+2026-11-13 04:55:39.998 E  Mushaf[8978:7c61] [com.apple.WebKit:ResourceLoadStatistics] WebContent[8987] Unable to hide query parameters from script (missing data)
+2026-11-13 04:55:40.020 Df Mushaf[8978:7bb3] [io.github.maazarif.mushaf:web] committed https://maazarif.github.io/quran-app/
+2026-11-13 04:55:40.025 E  Mushaf[8978:7bb3] [com.apple.WebKit:ResourceLoadStatistics] Failed to request allowed query parameters from WebPrivacy.
+2026-11-13 04:55:40.279 Df Mushaf[8978:7bb3] [io.github.maazarif.mushaf:web] finished https://maazarif.github.io/quran-app/
+2026-11-13 04:55:40.280 E  Mushaf[8978:7bb3] [com.apple.WebKit:ResourceLoadStatistics] Failed to request restricted opener domains from WebPrivacy
+2026-11-13 04:55:40.502 Df Mushaf[8978:7bb3] [io.github.maazarif.mushaf:web] page: Mushaf Reader | interactive | text 381
+2026-11-13 04:55:40.878 E  Mushaf[8978:7c61] [com.apple.WebKit:ResourceLoadStatistics] WebContent[8987] Unable to hide query parameters from script (missing data)
