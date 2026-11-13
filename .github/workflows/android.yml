@@ -1,0 +1,70 @@
+# Builds the Android app (a Trusted Web Activity around the published web app).
+# - mushaf-test.apk: signed with the test key in the repository; anyone can install it.
+# - mushaf-release.aab: for Google Play, signed with the upload key when the ANDROID_UPLOAD_KEY_BASE64 and
+#   ANDROID_KEYSTORE_PASSWORD secrets are set (see android/README.md); unsigned otherwise.
+# Then it opens the test build on an Android emulator and saves a screenshot.
+name: Android app
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: android } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.11.1" }
+      - name: Upload key from secrets (if set)
+        env:
+          KEY_B64: ${{ secrets.ANDROID_UPLOAD_KEY_BASE64 }}
+          KEY_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEY_B64" ]; then
+            echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/upload.p12"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.p12" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEY_PW" >> "$GITHUB_ENV"
+            echo "Signing the Play build with the upload key."
+          else
+            echo "::notice::No upload key secrets yet: the Play build (AAB) is unsigned. The test APK is still installable."
+          fi
+      - run: gradle --no-daemon :app:assemblePreview :app:bundleRelease
+      - name: Collect
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/preview/app-preview.apk out/mushaf-test.apk
+          cp app/build/outputs/bundle/release/app-release.aab out/mushaf-release.aab
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --print-certs out/mushaf-test.apk | head -4
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/aapt2" dump badging out/mushaf-test.apk | grep -E "^package|sdkVersion|targetSdkVersion|application-label:" | tee out/badging.txt
+      - uses: actions/upload-artifact@v4
+        with: { name: mushaf-android, path: android/out }
+
+  try-on-emulator:
+    needs: build
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: mushaf-android, path: out }
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            adb install -r out/mushaf-test.apk
+            adb shell am start -n io.github.maazarif.mushaf/com.google.androidbrowserhelper.trusted.LauncherActivity
+            sleep 45
+            adb exec-out screencap -p > out/android-screenshot.png
+            adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | head -3 > out/emulator-activity.txt || true
+      - uses: actions/upload-artifact@v4
+        with: { name: mushaf-android-screenshot, path: "out/*.png\nout/*.txt" }

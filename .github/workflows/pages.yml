@@ -4,6 +4,7 @@ name: Test and publish
 on:
   push:
     branches: [main]
+    paths-ignore: ["android/**", "ios/**", "native-assets/**", ".github/workflows/android.yml", ".github/workflows/ios.yml"]
   workflow_dispatch:
 permissions:
   contents: write

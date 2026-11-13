@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Mushaf</string>
+    <string name="launch_url">https://maazarif.github.io/quran-app/</string>
+    <string name="provider_authority">io.github.maazarif.mushaf.fileprovider</string>
+    <!-- the website that vouches for this app (it lists this app's signing keys in /.well-known/assetlinks.json) -->
+    <string name="asset_statements" translatable="false">
+        [{ \"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": { \"namespace\": \"web\", \"site\": \"https://maazarif.github.io\" } }]
+    </string>
+</resources>
