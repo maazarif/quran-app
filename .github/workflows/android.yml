@@ -9,6 +9,8 @@ on:
     branches: [main]
     paths: ["android/**", ".github/workflows/android.yml"]
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -42,6 +44,13 @@ jobs:
           "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/aapt2" dump badging out/mushaf-test.apk | grep -E "^package|sdkVersion|targetSdkVersion|application-label:" | tee out/badging.txt
       - uses: actions/upload-artifact@v4
         with: { name: mushaf-android, path: android/out }
+      - name: Publish on the Releases page (download on a phone to install the test build)
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          gh release delete android-latest -y --cleanup-tag 2>/dev/null || true
+          gh release create android-latest out/mushaf-test.apk out/mushaf-release.aab --prerelease --target "$GITHUB_SHA" \
+            --title "Android app — latest build (${GITHUB_SHA::7})" \
+            --notes "**mushaf-test.apk**: install on an Android phone to try the app (allow installs from your browser when asked). **mushaf-release.aab**: upload this one to Google Play (signed with the upload key once the secrets are set; see android/README.md)."
 
   try-on-emulator:
     needs: build
@@ -66,5 +75,9 @@ jobs:
             sleep 45
             adb exec-out screencap -p > out/android-screenshot.png
             adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | head -3 > out/emulator-activity.txt || true
-      - uses: actions/upload-artifact@v4
-        with: { name: mushaf-android-screenshot, path: "out/*.png\nout/*.txt" }
+      - name: Save the screenshot to the native-builds-android branch
+        run: |
+          mkdir shots && cp out/*.png out/*.txt shots/ 2>/dev/null; cd shots
+          git init -q -b native-builds-android && git config user.name "github-actions[bot]" && git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A && git commit -q -m "Android screenshot ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" native-builds-android
