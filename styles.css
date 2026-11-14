@@ -1,0 +1,365 @@
+/* Mushaf and interface fonts (bundled, SIL Open Font Licence, see fonts/quran/): no internet needed to draw the text */
+@font-face{font-family:"Amiri Quran";src:url("fonts/quran/amiri-quran.woff") format("woff");font-display:block}
+@font-face{font-family:"Amiri";src:url("fonts/quran/amiri-regular.woff") format("woff");font-weight:400;font-display:block}
+@font-face{font-family:"Amiri";src:url("fonts/quran/amiri-bold.woff") format("woff");font-weight:700;font-display:block}
+@font-face{font-family:"Scheherazade New";src:url("fonts/quran/scheherazade-new-regular.woff") format("woff");font-weight:400;font-display:block}
+@font-face{font-family:"Scheherazade New";src:url("fonts/quran/scheherazade-new-bold.woff") format("woff");font-weight:700;font-display:block}
+@font-face{font-family:"Noto Naskh Arabic";src:url("fonts/quran/noto-naskh-arabic.woff") format("woff");font-weight:400 700;font-display:block}
+@font-face{font-family:"Figtree";src:url("fonts/quran/figtree.woff") format("woff");font-weight:300 900;font-display:swap}
+/* IndoPak Nastaleeq (bundled, see data/SOURCES.md): three widths of one font for fitting lines */
+@font-face{font-family:"IP Normal";src:url("fonts/indopak/nastaleeq-normal.woff2") format("woff2");font-display:block}
+@font-face{font-family:"IP Compact";src:url("fonts/indopak/nastaleeq-compact.woff2") format("woff2");font-display:block}
+@font-face{font-family:"IP Compressed";src:url("fonts/indopak/nastaleeq-compressed.woff2") format("woff2");font-display:block}
+/* Layout: one Madani Mushaf page as paper on a green-tinted ground, read right-to-left; translation below; settings, saved ayat and ayah actions in bottom sheets */
+:root{
+  --tsize:0.95rem;
+  --cur:rgba(31,90,75,.17);
+  --ground:#e3e8e2; --paper:#fbf8ee; --ink:#1d2421; --muted:#5f6d66;
+  --frame:#1f5a4b; --gilt:#a8833a; --line:#cfd8d0; --chip:#eef2ec;
+  --hl-amber:rgba(240,196,70,.38); --hl-green:rgba(90,180,120,.30);
+  --hl-blue:rgba(90,150,220,.28); --hl-rose:rgba(225,110,130,.28);
+  --sel:rgba(31,90,75,.14); --play:rgba(168,131,58,.22); --danger:#9b2c2c;
+  --f-quran:"Amiri Quran","Amiri","Scheherazade New",serif;
+  --f-ar-ui:"Amiri","Scheherazade New",serif;
+  --f-ui:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --qsize:1.75rem;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --ground:#0c1311; --paper:#161f1c; --ink:#ebe4cf; --muted:#9aa89f;
+  --frame:#4f9a83; --gilt:#cfae62; --line:#2a3632; --chip:#1e2a26;
+  --hl-amber:rgba(230,185,60,.26); --hl-green:rgba(90,190,130,.22);
+  --hl-blue:rgba(100,160,235,.24); --hl-rose:rgba(230,115,140,.24);
+  --sel:rgba(120,200,170,.16); --cur:rgba(120,200,170,.24); --play:rgba(207,174,98,.22); --danger:#e08a8a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --ground:#0c1311; --paper:#161f1c; --ink:#ebe4cf; --muted:#9aa89f;
+  --frame:#4f9a83; --gilt:#cfae62; --line:#2a3632; --chip:#1e2a26;
+  --hl-amber:rgba(230,185,60,.26); --hl-green:rgba(90,190,130,.22);
+  --hl-blue:rgba(100,160,235,.24); --hl-rose:rgba(230,115,140,.24);
+  --sel:rgba(120,200,170,.16); --cur:rgba(120,200,170,.24); --play:rgba(207,174,98,.22); --danger:#e08a8a; color-scheme:dark}
+
+*{box-sizing:border-box}
+/* Design: an illuminated page on a quiet geometric ground. Everything around the page is soft and rounded
+   so the page itself, with its green and gilt rules, is the one strong shape on screen. */
+body{background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;background:var(--frame);opacity:.07;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.2'%3E%3Crect x='20' y='20' width='24' height='24'/%3E%3Crect x='20' y='20' width='24' height='24' transform='rotate(45 32 32)'/%3E%3Cpath d='M0 32h15M49 32h15M32 0v15M32 49v15'/%3E%3C/g%3E%3C/svg%3E") 0 0/64px 64px;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.2'%3E%3Crect x='20' y='20' width='24' height='24'/%3E%3Crect x='20' y='20' width='24' height='24' transform='rotate(45 32 32)'/%3E%3Cpath d='M0 32h15M49 32h15M32 0v15M32 49v15'/%3E%3C/g%3E%3C/svg%3E") 0 0/64px 64px}
+.app{max-width:600px;margin:0 auto;padding-block:12px 112px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:14px}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:2px solid var(--gilt);outline-offset:2px}
+
+/* header */
+.bar{display:flex;align-items:center;gap:8px;padding-top:2px}
+.brand{color:var(--frame);line-height:1;margin-inline-end:auto;display:flex;align-items:center;gap:9px}
+.brand .mark{width:30px;height:30px;flex:none}
+.brand .mark rect{fill:var(--gilt)} .brand .mark circle:first-of-type{fill:var(--paper)} .brand .mark circle:last-of-type{fill:var(--frame)}
+.brand .ar{font-family:var(--f-ar-ui);font-weight:700;font-size:1.5rem;padding-bottom:4px}
+.brand small{font-family:var(--f-ui);font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.icon-btn{border:1px solid var(--line);background:var(--paper);border-radius:999px;height:40px;min-width:40px;padding:0 14px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:.85rem;font-weight:600;
+  box-shadow:0 1px 2px rgba(0,0,0,.05);transition:border-color .15s,background .15s}
+.icon-btn:hover{border-color:var(--frame)}
+a.icon-btn{color:var(--ink);text-decoration:none}
+.icon-btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.count{background:var(--frame);color:var(--paper);border-radius:999px;font-size:.68rem;line-height:18px;padding:0 6px;min-width:18px;text-align:center;font-weight:700}
+
+/* "Go to" card: four labelled fields in one rounded strip */
+.jump{display:grid;grid-template-columns:minmax(0,1fr) 66px 86px 74px;background:var(--paper);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.fld{display:flex;flex-direction:column;justify-content:center;gap:1px;padding:7px 12px 6px;border-left:1px solid var(--line);min-width:0;cursor:pointer;transition:background .15s}
+.fld:first-child{border-left:0}
+.fld:focus-within{background:var(--chip)}
+.fld span{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700;line-height:1.2}
+.fld select,.fld input{border:0;background:transparent;height:24px;padding:0;width:100%;min-width:0;font-weight:600;font-size:.92rem;outline:0;-webkit-appearance:none;appearance:none;border-radius:0}
+.fld select{padding-right:14px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") right 1px center/9px no-repeat;text-overflow:ellipsis}
+.fld input{font-variant-numeric:tabular-nums;-moz-appearance:textfield}
+.fld input::-webkit-outer-spin-button,.fld input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.fld input::placeholder{color:var(--muted);opacity:.6}
+
+/* page: paper with a spine shadow on the binding side and the edges of the pages beneath */
+.page{background:var(--paper);border-radius:6px;padding:12px;position:relative;min-height:420px;touch-action:pan-y;
+  box-shadow:0 1px 1px rgba(0,0,0,.05),0 22px 44px -26px rgba(0,0,0,.5)}
+.page[data-side="r"]{background-image:linear-gradient(to right,rgba(0,0,0,.075),transparent 26px)}
+.page[data-side="l"]{background-image:linear-gradient(to left,rgba(0,0,0,.075),transparent 26px)}
+.page::before,.page::after{content:"";position:absolute;inset:0;z-index:-1;background:var(--paper);border:1px solid var(--line);border-radius:6px}
+.page::before{transform:translate(3px,2px)} .page::after{transform:translate(6px,4px);opacity:.7}
+.page[data-side="l"]::before{transform:translate(-3px,2px)} .page[data-side="l"]::after{transform:translate(-6px,4px)}
+.frame{border:1.5px solid var(--frame);padding:16px 15px 10px;position:relative;min-height:400px;display:flex;flex-direction:column;
+  box-shadow:inset 0 0 0 3px var(--paper),inset 0 0 0 4px var(--gilt);
+  /* small gilt rosettes in the four corners */
+  background:
+    radial-gradient(circle at 0 0,var(--gilt) 0 2.5px,transparent 3px 6px,var(--gilt) 6.5px 7.3px,transparent 7.8px) 4px 4px/14px 14px no-repeat,
+    radial-gradient(circle at 100% 0,var(--gilt) 0 2.5px,transparent 3px 6px,var(--gilt) 6.5px 7.3px,transparent 7.8px) calc(100% - 4px) 4px/14px 14px no-repeat,
+    radial-gradient(circle at 0 100%,var(--gilt) 0 2.5px,transparent 3px 6px,var(--gilt) 6.5px 7.3px,transparent 7.8px) 4px calc(100% - 4px)/14px 14px no-repeat,
+    radial-gradient(circle at 100% 100%,var(--gilt) 0 2.5px,transparent 3px 6px,var(--gilt) 6.5px 7.3px,transparent 7.8px) calc(100% - 4px) calc(100% - 4px)/14px 14px no-repeat}
+/* eight-point star medallions at the top and bottom of the frame */
+.frame::before,.frame::after{content:"";position:absolute;width:22px;height:22px;left:calc(50% - 11px);
+  background:radial-gradient(circle,var(--frame) 0 2.6px,var(--paper) 3.2px 5.4px,var(--gilt) 6px);
+  clip-path:polygon(50% 0%,64.6% 14.6%,85.4% 14.6%,85.4% 35.4%,100% 50%,85.4% 64.6%,85.4% 85.4%,64.6% 85.4%,50% 100%,35.4% 85.4%,14.6% 85.4%,14.6% 64.6%,0% 50%,14.6% 35.4%,14.6% 14.6%,35.4% 14.6%)}
+.frame::before{top:-12px} .frame::after{bottom:-12px}
+.runhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;direction:rtl;font-family:var(--f-ar-ui);color:var(--frame);font-size:1rem;padding:2px 6px 8px;margin-bottom:10px;
+  background:linear-gradient(to left,transparent,var(--gilt) 18%,var(--gilt) 82%,transparent) bottom/100% 1px no-repeat}
+.runhead span{white-space:nowrap}
+.runhead span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.body{flex:1}
+/* surah title: a cartouche with green and gilt rules */
+.surah-head{margin:14px 0 8px;border-radius:999px;padding:5px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;direction:rtl;
+  background:var(--chip);box-shadow:inset 0 0 0 1.5px var(--frame),inset 0 0 0 4px var(--chip),inset 0 0 0 5px var(--gilt)}
+.surah-head .nm{font-family:var(--f-ar-ui);font-weight:700;font-size:1.3rem;color:var(--frame);display:flex;align-items:center;gap:.5em}
+.surah-head .nm::before,.surah-head .nm::after{content:"";width:.32em;height:.32em;background:var(--gilt);transform:rotate(45deg);flex:none}
+.surah-head .meta{font-family:var(--f-ar-ui);font-size:.85rem;color:var(--muted);min-width:4.5em}
+.surah-head .meta:last-child{text-align:left}
+.basmala{text-align:center;font-family:var(--f-quran);font-size:calc(var(--qsize)*.92);direction:rtl;margin:4px 0 2px;line-height:2}
+.text{direction:rtl;text-align:justify;text-align-last:center;font-family:var(--f-quran);font-size:var(--qsize);line-height:2.3;margin:0 0 4px}
+.ayah{border-radius:6px;padding:0 1px;cursor:pointer;transition:background .15s;-webkit-tap-highlight-color:transparent}
+.ayah:hover{background:var(--sel)}
+.ayah[data-hl="amber"]{background:var(--hl-amber)}
+.ayah[data-hl="green"]{background:var(--hl-green)}
+.ayah[data-hl="blue"]{background:var(--hl-blue)}
+.ayah[data-hl="rose"]{background:var(--hl-rose)}
+.ayah.sel{box-shadow:0 0 0 1.5px var(--frame);background:var(--sel)}
+.ayah.playing{background:var(--play);box-shadow:0 0 0 1.5px var(--gilt)}
+.end{color:var(--gilt);font-family:var(--f-ar-ui);font-size:.8em;white-space:nowrap}
+.ayah.bm .end{color:var(--paper);background:var(--gilt);border-radius:999px;padding:0 .25em}
+
+/* IndoPak: 15 fixed lines per page, each justified across the width like the printed Taj copy */
+.frame.ip{padding:14px 11px 8px}
+.frame.ip .body{display:flex;flex-direction:column}
+.ipl{display:flex;direction:rtl;justify-content:space-between;align-items:center;height:var(--iplh);font-family:"IP Normal",serif;font-size:var(--ipf);line-height:1;white-space:nowrap;color:var(--ink)}
+.ipl.ipc{justify-content:center;gap:.28em}
+.ipl.ips{justify-content:center}
+.ipl.ips .surah-head{margin:0;width:100%;padding:0 12px;font-size:calc(var(--iplh)*.4)}
+.ipl.ips .surah-head .nm{font-size:1.25em}
+.ip .ayah{padding:.08em .04em;border-radius:4px}
+.ip .ayah:hover{background:none}
+.ip .ayah.hov{background:var(--sel)}
+.ip .ayah.sel{box-shadow:none;background:var(--sel);outline:1px solid var(--frame);outline-offset:-1px}
+.ip .ayah.playing{box-shadow:none;background:var(--play)}
+.ip .ayah.endw{color:var(--frame)}
+.ip .ayah.bm.endw{color:var(--paper);background:var(--gilt)}
+.ip .ayah[data-hl="amber"]{background:var(--hl-amber)}
+.ip .ayah[data-hl="green"]{background:var(--hl-green)}
+.ip .ayah[data-hl="blue"]{background:var(--hl-blue)}
+.ip .ayah[data-hl="rose"]{background:var(--hl-rose)}
+/* IndoPak larger text: words wrap freely instead of the printed 15 lines */
+.ipflow-on{gap:.35em}
+.ipflow{margin:0;direction:rtl;text-align:justify;text-align-last:right;font-family:"IP Normal",serif;font-size:var(--ipf);line-height:2.15;color:var(--ink);overflow-wrap:normal}
+.ipflow.ipb{text-align:center;text-align-last:center}
+.ipflow-on .ipl.ips{height:auto;padding-block:.3em}
+.sheet .ar.ipar{font-family:"IP Normal",serif;font-size:1.7rem;line-height:2.2}
+/* page number between two fine rules */
+.folio{display:flex;align-items:center;justify-content:center;gap:12px;font-family:var(--f-ar-ui);color:var(--frame);font-size:1.05rem;margin-top:8px;padding-top:4px}
+.folio::before,.folio::after{content:"";height:1px;flex:0 1 72px;background:linear-gradient(to var(--fd,right),transparent,var(--gilt))}
+.folio::after{--fd:left}
+.ribbon{position:absolute;top:-4px;left:26px;width:16px;height:40px;background:linear-gradient(var(--gilt),color-mix(in srgb,var(--gilt) 80%,#000));clip-path:polygon(0 0,100% 0,100% 100%,50% 76%,0 100%);z-index:1;filter:drop-shadow(0 2px 2px rgba(0,0,0,.2))}
+.state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;color:var(--muted);padding:40px 10px}
+.state.err{color:var(--danger)}
+.sk{width:100%;display:flex;flex-direction:column;gap:18px}
+.sk i{display:block;height:14px;border-radius:7px;background:linear-gradient(90deg,var(--chip),var(--line),var(--chip)) 0 0/200% 100%;animation:shimmer 1.4s linear infinite}
+.sk i:nth-child(odd){width:92%;margin-left:auto}
+@keyframes shimmer{to{background-position:-200% 0}}
+
+/* turning pages: the new page slides in from the side it comes from (the Mushaf opens right to left) */
+@keyframes turnF{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:none}}
+@keyframes turnB{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+#page[data-turn="fwd"] .frame{animation:turnF .28s cubic-bezier(.2,.7,.2,1)}
+#page[data-turn="back"] .frame{animation:turnB .28s cubic-bezier(.2,.7,.2,1)}
+
+/* page turner with the journey track: your place in the whole Mushaf, a tick at each juz */
+.turner{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px}
+.turner button{border:1px solid var(--line);background:var(--paper);border-radius:999px;height:44px;padding:0 14px;font-size:.85rem;font-weight:600;display:flex;align-items:center;gap:2px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.turner button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.turner button:not(:disabled):hover{border-color:var(--frame);color:var(--frame)}
+.turner button:disabled{opacity:.4;cursor:default}
+.turner .mid{display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:0}
+.turner .where{font-size:.78rem;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track{position:relative;height:16px;cursor:pointer;--pos:0}
+.track::before{content:"";position:absolute;left:0;right:0;top:6px;height:4px;border-radius:4px;background:var(--line)}
+.track i{position:absolute;right:0;top:6px;height:4px;border-radius:4px;width:calc(var(--pos)*100%);background:linear-gradient(to left,var(--frame),var(--gilt));transition:width .3s}
+.track b span{position:absolute;top:4px;width:1px;height:8px;background:var(--muted);opacity:.35}
+.track::after{content:"";position:absolute;top:2px;width:12px;height:12px;border-radius:999px;right:calc(var(--pos)*100%);transform:translateX(50%);background:var(--paper);border:2.5px solid var(--frame);box-sizing:border-box;transition:right .3s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+
+/* translation below the page */
+.trans{display:flex;flex-direction:column;background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:14px 12px 6px}
+.trans h2{font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 4px 8px}
+.trow{display:grid;grid-template-columns:54px 1fr;gap:10px;padding:11px 4px;font-size:var(--tsize);line-height:1.6;border-top:1px solid var(--line);cursor:pointer;border-radius:8px}
+.trow:hover{background:var(--sel)}
+.trow.playing{background:var(--play)}
+.trow .ref{font-size:.72rem;color:var(--frame);font-weight:700;font-variant-numeric:tabular-nums;align-self:start;justify-self:start;background:var(--chip);border-radius:999px;padding:2px 8px;margin-top:1px}
+.trow div{min-width:0;display:flex;flex-direction:column;gap:2px}
+.trow p{margin:0}
+.trow .tl{font-style:italic;color:var(--muted);font-size:.92em}
+.trow p[dir="rtl"]{font-family:var(--f-ar-ui);font-size:1.1em;line-height:1.9}
+
+.note{font-size:.74rem;color:var(--muted);text-align:center;margin:0;padding:4px 12px;line-height:1.55}
+
+/* Highlight mode: colour bar floating above the player */
+.hlbar{position:fixed;left:max(10px,calc(50% - 300px));right:max(10px,calc(50% - 300px));bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:16;
+  background:var(--paper);background:color-mix(in srgb,var(--paper) 90%,transparent);-webkit-backdrop-filter:blur(16px) saturate(1.3);backdrop-filter:blur(16px) saturate(1.3);
+  border:1px solid var(--line);border-radius:20px;box-shadow:0 14px 34px -14px rgba(0,0,0,.4);padding:10px 12px}
+.hlbar-in{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hlhint{font-size:.78rem;color:var(--muted);flex:1 1 100%}
+.hlbar .row{flex:1;gap:10px}
+.hlbar .swatch[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 2px var(--paper),0 0 0 4px var(--frame)}
+body.hl-on .app{padding-bottom:200px}
+#hlBtn[aria-pressed="true"]{background:var(--frame);border-color:var(--frame);color:var(--paper)}
+.trow[data-hl="amber"]{background:var(--hl-amber)} .trow[data-hl="green"]{background:var(--hl-green)}
+.trow[data-hl="blue"]{background:var(--hl-blue)} .trow[data-hl="rose"]{background:var(--hl-rose)}
+
+/* player: a floating bar of frosted paper */
+.player{position:fixed;left:max(10px,calc(50% - 300px));right:max(10px,calc(50% - 300px));bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:15;
+  background:var(--paper);background:color-mix(in srgb,var(--paper) 88%,transparent);-webkit-backdrop-filter:blur(16px) saturate(1.3);backdrop-filter:blur(16px) saturate(1.3);
+  border:1px solid var(--line);border-radius:22px;box-shadow:0 14px 34px -14px rgba(0,0,0,.45);padding:8px 8px 8px 8px}
+.player-in{display:flex;align-items:center;gap:12px}
+.pbtn{width:46px;height:46px;border-radius:999px;border:0;background:var(--frame);color:var(--paper);display:flex;align-items:center;justify-content:center;flex:none;position:relative;
+  box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--gilt) 70%,transparent)}
+.pbtn svg{width:18px;height:18px;fill:currentColor;position:relative}
+.player.on .pbtn::after{content:"";position:absolute;inset:0;border-radius:999px;border:2px solid var(--gilt);animation:breathe 2.4s ease-out infinite}
+@keyframes breathe{from{transform:scale(1);opacity:.8}to{transform:scale(1.5);opacity:0}}
+.pinfo{flex:1;min-width:0}
+.pinfo b{display:block;font-weight:700;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pinfo span{display:block;font-size:.76rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pinfo a{color:var(--frame)}
+.ghost{border:1px solid var(--line);background:var(--chip);border-radius:999px;height:38px;padding:0 14px;font-size:.8rem;font-weight:600;flex:none}
+
+/* sheets */
+.scrim{position:fixed;inset:0;background:rgba(5,15,12,.42);z-index:20;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);animation:fade .2s}
+.sheet{position:fixed;left:max(0px,calc(50% - 330px));right:max(0px,calc(50% - 330px));bottom:0;z-index:21;background:var(--paper);border-radius:24px 24px 0 0;max-height:84vh;overflow:auto;box-shadow:0 -10px 40px rgba(0,0,0,.25);
+  padding-top:10px;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px));
+  padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));animation:rise .26s cubic-bezier(.2,.8,.2,1)}
+@keyframes rise{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+@keyframes fade{from{opacity:0}}
+.sheet-inner{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.grip{width:40px;height:4px;border-radius:4px;background:var(--line);margin:0 auto 4px}
+.sheet h3{margin:0;font-size:1.05rem;font-weight:700;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.sheet h3 span{font-size:.8rem;color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
+.sheet .ar{direction:rtl;font-family:var(--f-quran);font-size:calc(var(--qsize)*.95);line-height:2.1;text-align:right;margin:0}
+.sheet .tr{margin:0;color:var(--muted)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--chip);border-radius:12px;height:42px;padding:0 14px;font-size:.88rem;font-weight:600;display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:var(--ink)}
+.btn.primary{background:var(--frame);border-color:var(--frame);color:var(--paper)}
+.swatch{width:36px;height:36px;border-radius:999px;border:2px solid var(--line);padding:0;position:relative}
+.swatch[aria-pressed="true"]{border-color:var(--ink)}
+.swatch.amber{background:var(--hl-amber)} .swatch.green{background:var(--hl-green)}
+.swatch.blue{background:var(--hl-blue)} .swatch.rose{background:var(--hl-rose)}
+.swatch.none{background:var(--paper)}
+.swatch.none::after{content:"";position:absolute;left:7px;right:7px;top:15px;border-top:2px solid var(--muted);transform:rotate(-45deg)}
+.lbl{font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.field{display:flex;flex-direction:column;gap:8px}
+.seg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.seg button{border:1px solid var(--line);background:var(--chip);border-radius:14px;padding:8px 10px;min-height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;transition:border-color .15s}
+.seg button[aria-pressed="true"]{border-color:var(--frame);box-shadow:inset 0 0 0 1px var(--frame);background:var(--paper)}
+.seg .sample{font-size:1.2rem;line-height:1.8;direction:rtl}
+.seg .cap{font-size:.75rem;color:var(--muted)}
+.sheet select{height:42px;border:1px solid var(--line);background:var(--chip);border-radius:12px;padding:0 10px;width:100%}
+input[type=range]{width:100%;accent-color:var(--frame)}
+.check{display:flex;gap:8px;align-items:center;font-size:.9rem}
+.check input{accent-color:var(--frame);width:18px;height:18px}
+.bm-item{display:grid;grid-template-columns:12px 1fr auto;gap:12px;align-items:center;padding:12px 4px;border:0;border-top:1px solid var(--line);background:none;text-align:left;width:100%;border-radius:8px}
+.bm-item:hover{background:var(--sel)}
+.dot{width:12px;height:12px;border-radius:999px;background:var(--gilt)}
+.dot.amber{background:var(--hl-amber);box-shadow:inset 0 0 0 1px var(--line)} .dot.green{background:var(--hl-green)} .dot.blue{background:var(--hl-blue)} .dot.rose{background:var(--hl-rose)}
+.bm-item .t{min-width:0}
+.bm-item .t b{font-weight:600;display:block}
+.bm-item .t span{font-size:.8rem;color:var(--muted);display:block}
+.bm-item .pg{font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.empty{color:var(--muted);font-size:.9rem;padding:8px 0;margin:0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(88px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:999px;font-size:.85rem;font-weight:500;z-index:30;max-width:90vw;text-align:center;box-shadow:0 8px 24px -8px rgba(0,0,0,.4);animation:fade .2s}
+@media (max-width:420px){
+  .jump{grid-template-columns:1fr 1fr 1fr}.f-surah{grid-column:1/-1;border-bottom:1px solid var(--line)}.fld:nth-child(2){border-left:0}
+  .bar{gap:6px}.icon-btn{padding:0 11px}.icon-btn .txt{display:none}.brand small{display:none}}
+@media (max-width:360px){.turner button span{display:none}.turner button{padding:0 11px}}
+@media (min-width:900px){.app{max-width:640px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* go-to-ayah: briefly mark the ayah you jumped to (after the highlight rules so it shows on top) */
+.ayah.flash,.ip .ayah.flash{background:var(--play);box-shadow:0 0 0 1.5px var(--gilt)}
+
+/* Side by side: translation on the left, Arabic on the right, one row per ayah */
+.frame.rows .body{display:flex;flex-direction:column}
+.vrow{display:grid;grid-template-columns:minmax(0,44fr) minmax(0,56fr);gap:14px;align-items:start;direction:ltr;
+  padding:12px 6px;border-top:1px solid var(--line);border-radius:6px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s}
+.vrow:first-of-type{border-top:0}
+.vrow:hover{background:var(--sel)}
+.vrow .vtr{min-width:0;display:flex;flex-direction:column;gap:4px;font-size:var(--tsize);line-height:1.55}
+.vrow .vtr p{margin:0}
+.vrow .vtr .ref{font-size:.75rem;color:var(--frame);font-weight:600;font-variant-numeric:tabular-nums}
+.vrow .vtr .tl{font-style:italic;color:var(--muted);font-size:.9em}
+.vrow .vtr p[dir="rtl"]{font-family:var(--f-ar-ui);font-size:1.1em;line-height:1.9;text-align:right}
+.vrow .var{min-width:0;direction:rtl;text-align:right;font-family:var(--f-quran);font-size:calc(var(--qsize)*.9);line-height:2.05;color:var(--ink)}
+.vrow .var.ipv,.basmala.ipv{font-family:"IP Normal",serif;font-size:var(--ipr);line-height:2.2}
+.frame.rows .surah-head{margin:14px 0 4px}
+.vrow[data-hl="amber"]{background:var(--hl-amber)} .vrow[data-hl="green"]{background:var(--hl-green)}
+.vrow[data-hl="blue"]{background:var(--hl-blue)} .vrow[data-hl="rose"]{background:var(--hl-rose)}
+.vrow.sel{background:var(--sel);box-shadow:inset 0 0 0 1.5px var(--frame)}
+.vrow.playing,.vrow.flash{background:var(--play);box-shadow:inset 0 0 0 1.5px var(--gilt)}
+.vrow.bm .end{color:var(--paper);background:var(--gilt);border-radius:999px;padding:0 .25em}
+.vrow.bm .ref::after{content:" · bookmarked";color:var(--gilt)}
+@media (max-width:420px){.vrow{gap:10px;padding:10px 2px}}
+
+/* the ayah you are on (reading mode): one at a time, shown over any highlight */
+.ayah.cur,.ip .ayah.cur,.vrow.cur,.trow.cur{background:var(--cur)!important}
+.ayah.cur:not(.ip .ayah){box-shadow:0 0 0 1.5px var(--frame)}
+.vrow.cur{box-shadow:inset 3px 0 0 var(--frame)}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:var(--paper)}
+.clearhl{padding-top:12px;border-top:1px solid var(--line)}
+
+/* Page colour (Aa › Page colour). "Auto" follows the phone's light or dark setting; the others always apply. */
+:root[data-paper="white"]{--ground:#e8ecea;--paper:#ffffff;--ink:#121815;--muted:#56625c;--frame:#1f5a4b;--gilt:#9a7630;--line:#d7dfda;--chip:#f0f3f1;
+  --hl-amber:rgba(240,196,70,.40);--hl-green:rgba(90,180,120,.32);--hl-blue:rgba(90,150,220,.30);--hl-rose:rgba(225,110,130,.30);
+  --sel:rgba(31,90,75,.12);--cur:rgba(31,90,75,.16);--play:rgba(168,131,58,.22);--danger:#9b2c2c;color-scheme:light}
+:root[data-paper="cream"]{--ground:#e3e8e2;--paper:#fbf8ee;--ink:#1d2421;--muted:#5f6d66;--frame:#1f5a4b;--gilt:#a8833a;--line:#cfd8d0;--chip:#eef2ec;
+  --hl-amber:rgba(240,196,70,.38);--hl-green:rgba(90,180,120,.30);--hl-blue:rgba(90,150,220,.28);--hl-rose:rgba(225,110,130,.28);
+  --sel:rgba(31,90,75,.14);--cur:rgba(31,90,75,.17);--play:rgba(168,131,58,.22);--danger:#9b2c2c;color-scheme:light}
+:root[data-paper="sepia"]{--ground:#e4d6ba;--paper:#f6edd8;--ink:#2f2416;--muted:#6b5a42;--frame:#6b4a24;--gilt:#9a6f2a;--line:#dccbab;--chip:#efe3c9;
+  --hl-amber:rgba(232,180,60,.40);--hl-green:rgba(110,160,90,.32);--hl-blue:rgba(90,140,200,.28);--hl-rose:rgba(215,100,110,.28);
+  --sel:rgba(107,74,36,.13);--cur:rgba(107,74,36,.19);--play:rgba(154,111,42,.24);--danger:#93302a;color-scheme:light}
+:root[data-paper="mint"]{--ground:#d9e7df;--paper:#f0f8f3;--ink:#14231c;--muted:#52665c;--frame:#1b5e47;--gilt:#957636;--line:#c6d8cd;--chip:#e2eee7;
+  --hl-amber:rgba(240,196,70,.40);--hl-green:rgba(80,175,115,.30);--hl-blue:rgba(90,150,220,.28);--hl-rose:rgba(225,110,130,.28);
+  --sel:rgba(27,94,71,.13);--cur:rgba(27,94,71,.18);--play:rgba(149,118,54,.22);--danger:#9b2c2c;color-scheme:light}
+:root[data-paper="night"]{--ground:#0c1311;--paper:#161f1c;--ink:#ebe4cf;--muted:#9aa89f;--frame:#4f9a83;--gilt:#cfae62;--line:#2a3632;--chip:#1e2a26;
+  --hl-amber:rgba(230,185,60,.26);--hl-green:rgba(90,190,130,.22);--hl-blue:rgba(100,160,235,.24);--hl-rose:rgba(230,115,140,.24);
+  --sel:rgba(120,200,170,.16);--cur:rgba(120,200,170,.24);--play:rgba(207,174,98,.22);--danger:#e08a8a;color-scheme:dark}
+:root[data-paper="black"]{--ground:#000000;--paper:#050505;--ink:#e9e4d4;--muted:#9b9b95;--frame:#4a947d;--gilt:#c9a95c;--line:#1f1f1f;--chip:#111111;
+  --hl-amber:rgba(230,185,60,.28);--hl-green:rgba(90,190,130,.24);--hl-blue:rgba(100,160,235,.26);--hl-rose:rgba(230,115,140,.26);
+  --sel:rgba(120,200,170,.16);--cur:rgba(120,200,170,.24);--play:rgba(207,174,98,.24);--danger:#e08a8a;color-scheme:dark}
+.paperseg{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px}
+.paperseg button{border:1px solid var(--line);background:var(--chip);border-radius:12px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.78rem}
+.paperseg button[aria-pressed="true"]{border-color:var(--frame);box-shadow:inset 0 0 0 1px var(--frame)}
+.paperseg .pv{width:44px;height:30px;border-radius:6px;border:1px solid rgba(127,127,127,.35);display:flex;align-items:center;justify-content:center;font:600 .85rem/1 var(--f-ui)}
+
+/* IndoPak words: lay every word out strictly right to left in stored order, as one unit. The text uses the
+   font's own glyph codes (ayah numbers, some letters such as the alif with kasra at the start of a word);
+   left to themselves, browsers treat those codes as left-to-right and can move them out of place. */
+.ip .ayah,.ip .w,.ipflow,.vrow .var.ipv,.basmala.ipv,.sheet .ar.ipar,.seg .sample{unicode-bidi:bidi-override;direction:rtl}
+
+/* IndoPak highlights run unbroken across the words of an ayah: each word's colour reaches over to the
+   next word of the same ayah on the line (--gl is set after the line is laid out) */
+.ip .ayah{position:relative;border-radius:0}
+.ip .ayah::before{content:"";position:absolute;top:0;bottom:0;right:100%;width:var(--gl,0px);background:inherit}
+.ip .gapw{white-space:normal}
+.ip .gapw[data-hl="amber"]{background:var(--hl-amber)} .ip .gapw[data-hl="green"]{background:var(--hl-green)}
+.ip .gapw[data-hl="blue"]{background:var(--hl-blue)} .ip .gapw[data-hl="rose"]{background:var(--hl-rose)}
+.ip .gapw.cur{background:var(--cur)!important} .ip .gapw.playing,.ip .gapw.flash{background:var(--play)}
+
+/* sheets: a close button that stays in reach while the sheet scrolls */
+.sheet-top{position:sticky;top:-10px;z-index:2;background:var(--paper);display:flex;align-items:center;justify-content:space-between;gap:8px;margin:-10px 0 0;padding:10px 0 6px}
+.sheet-top .grip{margin:0;flex:none}
+.sheet-top .grip{border:0;padding:0;cursor:pointer;height:6px;width:48px}
+.sheet-close{border:1px solid var(--line);background:var(--chip);border-radius:999px;height:36px;padding:0 16px;font-weight:600;font-size:.88rem;color:var(--ink)}
+/* player: previous / next ayah around play */
+.pctl{display:flex;align-items:center;gap:2px;flex:none}
+.skip{width:36px;height:42px;border:0;background:none;color:var(--frame);border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0}
+.skip svg{width:19px;height:19px;fill:currentColor}
+.skip:hover{background:var(--sel)}
+@media (max-width:360px){.skip{width:30px}.player-in{gap:8px}}
+/* surah titles: Amiri's letters reach well below the baseline (the م of ابراهيم), so give the name a tall line */
+.surah-head .nm{line-height:2.05}
+.surah-head{padding-block:1px}
+.ipl.ips .surah-head .nm{line-height:1.85}
+/* playback log in the reciter settings */
+.plog{border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:var(--chip)}
+.plog summary{cursor:pointer;font-size:.85rem;font-weight:600}
+.plog .tr{font-size:.78rem;margin:6px 0}
+.plog pre{margin:0;max-height:180px;overflow:auto;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;color:var(--ink)}
