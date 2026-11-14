@@ -1922,4 +1922,29 @@ test("Background helper can be switched off in Reciter settings; then no extra a
   await page.waitForFunction(() => window.mushafKeepAlive && mushafKeepAlive.state === "running");
 }));
 
+/* ---------- recitation audio never passes through the service worker (it broke up audio every few seconds) ---------- */
+test("Service worker leaves recitation audio alone, but still handles the app's own files", async () => {
+  const vm = await import("node:vm");
+  const src = readFileSync(new URL("../sw.js", import.meta.url), "utf8");
+  const handlers = {};
+  const ctx = { self: { addEventListener: (t, f) => (handlers[t] = f), location: new URL("https://maazarif.github.io/quran-app/sw.js"), skipWaiting() {}, clients: { claim() {} } },
+    caches: { open: async () => ({ put: async () => {}, addAll: async () => {} }), match: async () => undefined, keys: async () => [] },
+    fetch: async () => new Response("x"), URL, Response, Promise };
+  vm.createContext(ctx); vm.runInContext(src, ctx);
+  const handled = (url, { destination = "", range = false, mode = "no-cors" } = {}) => {
+    let used = false;
+    handlers.fetch({ request: { method: "GET", url, mode, destination, headers: new Headers(range ? { Range: "bytes=0-" } : {}) }, respondWith() { used = true; } });
+    return used;
+  };
+  for (const u of ["https://cdn.mp3quran.net/alafasy/022.mp3", "https://server8.mp3quran.net/afs/022.mp3", "https://audio-cdn.tarteel.ai/quran/surah/abdulbaset/022.mp3",
+                   "https://download.quranicaudio.com/quran/sudays/022.mp3", "https://everyayah.com/data/Alafasy_128kbps/022002.mp3"])
+    assert.equal(handled(u), false, "audio host: " + u);
+  assert.equal(handled("https://example.org/recording.mp3", { destination: "audio" }), false, "any audio element request");
+  assert.equal(handled("https://example.org/x.mp3", { range: true }), false, "any request for part of a file");
+  // the app's own files and the pinned libraries are still served (and kept for offline use)
+  for (const u of ["https://maazarif.github.io/quran-app/app.js", "https://maazarif.github.io/quran-app/data/uthmani-hafs.json", "https://cdn.jsdelivr.net/npm/quran-json@3.1.2/dist/chapters/en/2.json"])
+    assert.equal(handled(u), true, "app file: " + u);
+  assert.equal(handled("https://maazarif.github.io/quran-app/", { mode: "navigate" }), true, "opening the app");
+});
+
 await run();
